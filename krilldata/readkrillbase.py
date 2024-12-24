@@ -3,6 +3,7 @@ import numpy as np
 import logging
 import os
 import matplotlib.pyplot as plt
+import sys
 
 
 class readKrillBase:
@@ -22,6 +23,7 @@ class readKrillBase:
         self.transform_densities()
         self.geo_subset(lon_range=(-70, -31), lat_range=(-73, -50))
         self.data.reset_index(drop=True, inplace=True)
+        self.check_plot()
         self.logger.info(f"Head and tail of data:")
         self.logger.info(self.data.head())
         self.logger.info(self.data.tail())
@@ -58,6 +60,18 @@ class readKrillBase:
         valid_data =self.data.NUMBER_OF_KRILL_UNDER_1M2 >= 0
         self.data.loc[valid_data, "NUMBER_OF_KRILL_UNDER_1M2"] = \
             np.log10(self.data.loc[valid_data, "NUMBER_OF_KRILL_UNDER_1M2"] + 0.01)
+        return
+
+    def check_plot(self):
+        self.logger.info(f"Plotting data if file is not empty")
+        self.savename = 'krillbase_distributions.png'
+        if os.path.exists(os.path.join(self.output_path, self.savename)):
+            self.logger.info(f"File already exists: {self.savename}")
+        else:
+            self.logger.info(f"File does not exist: {self.savename}")
+            self.logger.info(f"File will be created: {self.savename}")
+            self.plotkrillbase()
+            self.logger.info(f"Finished plotting data")
         return
 
     def plotkrillbase(self):
@@ -161,6 +175,6 @@ class readKrillBase:
         
         plt.tight_layout()
         # Save figure with high DPI
-        fig.savefig(os.path.join(self.output_path, 'krillbase_distributions.png'), dpi=300, bbox_inches='tight')
-        self.logger.info(f"Saved figure to: {os.path.join(self.output_path, 'krillbase_distributions.png')}")
+        fig.savefig(os.path.join(self.output_path, self.savename), dpi=300, bbox_inches='tight')
+        self.logger.info(f"Saved figure to: {os.path.join(self.output_path, self.savename )}")
         return 
