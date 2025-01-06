@@ -1,5 +1,6 @@
-from krilldata import ReadKrillBase
+from krilldata import ReadKrillBase, DataFusion
 
-file = f"input/krillbase.csv"
+inputPath = "input/"
 outputPath = "output/"
-kb = ReadKrillBase(file, outputPath)
+kb = ReadKrillBase(inputPath, outputPath)
+DataFusion(kb.fileDataSubset, inputPath, outputPath) # fuse bathymetry, SST & krillbase data

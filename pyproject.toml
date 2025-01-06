@@ -11,6 +11,7 @@ python = ">=3.11.9,<3.12.4"
 pandas = "^2.2.3"
 numpy = "<2.0.0,>=1.23.0"
 matplotlib = "^3.10.0"
+xarray = "^2024.11.0"
 
 
 [build-system]

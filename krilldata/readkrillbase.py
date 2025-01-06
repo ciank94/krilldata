@@ -7,9 +7,36 @@ import sys
 
 
 class ReadKrillBase:
-    def __init__(self, file, outputPath):
+    loggerDescription = "\nReadKrillBase class description:\n\
+        reads data from the krillbase.csv from input files\n\
+        subsets key variables: `[date, lon, lat, temp, depth, krillDensity]`\n\
+        subsets years: `1980:2016`\n\
+        log10 transform krillDensity\n\
+        subsets lon and lat ranges\n\
+        visualises: `output/krillDistributions.png`\n\
+        prints head and tail of data to terminal\n"
+
+    defaultVariableSubset = [
+        "DATE",
+        "LONGITUDE",
+        "LATITUDE",
+        "CLIMATOLOGICAL_TEMPERATURE",
+        "WATER_DEP_MEAN_WITHIN_10KM",
+        "STANDARDISED_KRILL_UNDER_1M2"
+    ]
+    defaultLonRange = (-70, -31)
+    defaultLatRange = (-73, -50)
+    defaultTimeLimits = {
+        'startYear': 1980,
+        'endYear': 2016
+    }
+    
+    krillDistributionsFigName = "krillDistributions.png"
+    logging.basicConfig(level=logging.INFO) # set logging level for class
+    
+    def __init__(self, inputPath, outputPath):
         self.outputPath = outputPath
-        self.file = file
+        self.file = f"{inputPath}/krillbase.csv"
         self.fileData = None
         self.fileDataSubset = None
         self.processData()
@@ -21,29 +48,21 @@ class ReadKrillBase:
         self.variableSubset()
         self.dateSubset()
         self.transformDensities()
-        self.geoSubset(lonRange=(-70, -31), latRange=(-73, -50))
+        self.geoSubset(lonRange=ReadKrillBase.defaultLonRange, latRange=ReadKrillBase.defaultLatRange)
         self.fileDataSubset.reset_index(drop=True, inplace=True)
         self.checkPlot()
         self.printDataHead()
         return
 
     def initLogger(self):
-        logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.info(f"================={self.__class__.__name__}=====================")
-        self.logger.info(f"Initializing {self.__class__.__name__}")
+        self.logger.info(f"{ReadKrillBase.loggerDescription}")
         self.logger.info(f"Reading data from: {self.file}")
         return
 
     def variableSubset(self):
-        variableSubset = [
-            "DATE",
-            "LONGITUDE",
-            "LATITUDE",
-            "CLIMATOLOGICAL_TEMPERATURE",
-            "WATER_DEP_MEAN_WITHIN_10KM",
-            "NUMBER_OF_KRILL_UNDER_1M2"
-        ]
+        variableSubset = ReadKrillBase.defaultVariableSubset
         self.fileData = pd.read_table(self.file, sep=',', encoding='unicode_escape')
         self.fileDataSubset = self.fileData.loc[:, variableSubset]
         self.logger.info(f"Finished reading data from: {self.file}")
@@ -53,8 +72,8 @@ class ReadKrillBase:
     def dateSubset(self):
         # convert date to year-month-day
         self.fileDataSubset.DATE = pd.to_datetime(self.fileDataSubset.DATE, format='%d/%m/%Y')
-        self.fileDataSubset = self.fileDataSubset[(self.fileDataSubset.DATE.dt.year >= 1980) & (self.fileDataSubset.DATE.dt.year <= 2016)]
-        self.logger.info(f"Subset to date range 1980-2016")
+        self.fileDataSubset = self.fileDataSubset[(self.fileDataSubset.DATE.dt.year >= ReadKrillBase.defaultTimeLimits['startYear']) & (self.fileDataSubset.DATE.dt.year <= ReadKrillBase.defaultTimeLimits['endYear'])]
+        self.logger.info(f"Subset to date range {ReadKrillBase.defaultTimeLimits['startYear']}-{ReadKrillBase.defaultTimeLimits['endYear']}")
         return
 
     def geoSubset(self, lonRange=(-70, -31), latRange=(-73, -50)):
@@ -64,9 +83,9 @@ class ReadKrillBase:
         return
 
     def transformDensities(self):
-        validData = self.fileDataSubset.NUMBER_OF_KRILL_UNDER_1M2 >= 0
-        self.fileDataSubset.loc[validData, "NUMBER_OF_KRILL_UNDER_1M2"] = \
-            np.log10(self.fileDataSubset.loc[validData, "NUMBER_OF_KRILL_UNDER_1M2"] + 0.01)
+        validData = self.fileDataSubset.STANDARDISED_KRILL_UNDER_1M2 >= 0
+        self.fileDataSubset.loc[validData, "STANDARDISED_KRILL_UNDER_1M2"] = \
+            np.log10(self.fileDataSubset.loc[validData, "STANDARDISED_KRILL_UNDER_1M2"] + 0.01)
         return
 
     def printDataHead(self):
@@ -78,12 +97,12 @@ class ReadKrillBase:
 
     def checkPlot(self):
         self.logger.info(f"Plotting data if file is not empty")
-        self.savename = 'krillbaseDistributions.png'
-        if os.path.exists(os.path.join(self.outputPath, self.savename)):
-            self.logger.info(f"File already exists: {self.savename}")
+        self.saveName = ReadKrillBase.krillDistributionsFigName
+        if os.path.exists(os.path.join(self.outputPath, self.saveName)):
+            self.logger.info(f"File already exists: {self.saveName}")
         else:
-            self.logger.info(f"File does not exist: {self.savename}")
-            self.logger.info(f"File will be created: {self.savename}")
+            self.logger.info(f"File does not exist: {self.saveName}")
+            self.logger.info(f"File will be created: {self.saveName}")
             self.plotKrillBase()
             self.logger.info(f"Finished plotting data")
         return
@@ -110,7 +129,7 @@ class ReadKrillBase:
         
         # Krill densities histogram
         ax1 = fig.add_subplot(gs[0, 0])
-        n1, bins1, _ = ax1.hist(self.fileDataSubset.NUMBER_OF_KRILL_UNDER_1M2, bins=30, color=barColor, 
+        n1, bins1, _ = ax1.hist(self.fileDataSubset.STANDARDISED_KRILL_UNDER_1M2, bins=30, color=barColor, 
                                edgecolor='white', alpha=barAlpha, linewidth=1)
         ax1Twin = ax1.twinx()
         ax1Twin.plot(bins1[:-1], np.cumsum(n1)/np.sum(n1)*100, color=lineColor, linewidth=lineWidth)
@@ -189,6 +208,6 @@ class ReadKrillBase:
         
         plt.tight_layout()
         # Save figure with high DPI
-        fig.savefig(os.path.join(self.outputPath, self.savename), dpi=300, bbox_inches='tight')
-        self.logger.info(f"Saved figure to: {os.path.join(self.outputPath, self.savename )}")
+        fig.savefig(os.path.join(self.outputPath, self.saveName), dpi=300, bbox_inches='tight')
+        self.logger.info(f"Saved figure to: {os.path.join(self.outputPath, self.saveName )}")
         return 
