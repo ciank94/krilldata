@@ -1,7 +1,5 @@
-from krilldata.readkrillbase import readKrillBase
+from krilldata import ReadKrillBase
 
-file = f"input_files/krillbase.csv"
-output_path = "output_files"
-kb = readKrillBase(file, output_path)
-print(f"made it this far")
-breakpoint()
+file = f"input/krillbase.csv"
+outputPath = "output/"
+kb = ReadKrillBase(file, outputPath)

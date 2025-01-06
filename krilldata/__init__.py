@@ -1,1 +1,1 @@
-from .readkrillbase import readKrillBase
+from .readKrillbase import ReadKrillBase
