@@ -16,6 +16,7 @@ class DataFusion:
     # filenames:
     bathymetryFilename = "bathymetry.nc"
     sstFilename = "sst.nc"
+    bathymetrySaveFig = "bathymetryVerification.png"
 
     def __init__(self, krillData, inputPath, outputPath):
         # Instance variables
@@ -38,7 +39,7 @@ class DataFusion:
 
     def fuseData(self):
         self.fuseBathymetry()
-        
+        self.fuseSST()
         return
 
     def fuseBathymetry(self):
@@ -56,39 +57,17 @@ class DataFusion:
         self.logger.info(f"{self.krillData.head()}")
         
         # Plot bathymetry at krill locations
-        self.plotBathymetry(bathymetryDataset)
+        if os.path.exists(os.path.join(self.outputPath, DataFusion.bathymetrySaveFig)):
+            self.logger.info(f"File already exists: {DataFusion.bathymetrySaveFig}")
+        else:
+            self.logger.info(f"File does not exist: {DataFusion.bathymetrySaveFig}")
+            self.logger.info(f"File will be created: {DataFusion.bathymetrySaveFig}")
+            self.plotBathymetry(bathymetryDataset)
         return
 
-    def plotBathymetry(self, bathymetryDataset):
-        """Create a figure showing bathymetry data and krill locations"""
-        self.logger.info("Plotting bathymetry data...")
-        
-        # Create masked array for bathymetry where elevation <= 0
-        bathymetry = bathymetryDataset.elevation.values
-        masked_bathymetry = np.ma.masked_where(bathymetry > 0, bathymetry)
-        
-        fig, ax = plt.subplots(figsize=(10, 8))
-        
-        # Plot bathymetry with ocean-focused colormap
-        im = ax.pcolormesh(bathymetryDataset.lon, bathymetryDataset.lat, 
-                          masked_bathymetry, shading='auto', 
-                          cmap='Blues_r')  # Blues_r gives darker blues for deeper water
-        
-        # Plot krill locations
-        scatter = ax.scatter(self.krillData.LONGITUDE, self.krillData.LATITUDE, 
-                           c=self.krillData.BATHYMETRY, cmap='Blues_r', 
-                           s=20, edgecolor='black', linewidth=0.5)
-        
-        plt.colorbar(im, ax=ax, label='Ocean Depth (m)')
-        ax.set_title('Ocean Bathymetry and Krill Locations')
-        ax.set_xlabel('Longitude')
-        ax.set_ylabel('Latitude')
-        
-        plt.tight_layout()
-        plotName = "bathymetry_verification.png"
-        plt.savefig(os.path.join(self.outputPath, plotName), dpi=300, bbox_inches='tight')
-        plt.close()
-        self.logger.info(f"Saved bathymetry plot to: {plotName}")
+    def fuseSST(self):
+        DownloadSST()
+        breakpoint()
         return
 
     def findNearestPoints(self, latGrid, lonGrid, latPoints, lonPoints):
@@ -119,3 +98,39 @@ class DataFusion:
                             lonIdx-1, lonIdx)
         
         return latNearest, lonNearest
+
+    def plotBathymetry(self, bathymetryDataset):
+        """Create a figure showing bathymetry data and krill locations"""
+        self.logger.info("Plotting bathymetry data...")
+        
+        # Create masked array for bathymetry where elevation <= 0
+        bathymetry = bathymetryDataset.elevation.values
+        masked_bathymetry = np.ma.masked_where(bathymetry > 0, bathymetry)
+        
+        fig, ax = plt.subplots(figsize=(10, 8))
+        
+        # Plot bathymetry with ocean-focused colormap
+        im = ax.pcolormesh(bathymetryDataset.lon, bathymetryDataset.lat, 
+                          masked_bathymetry, shading='auto', 
+                          cmap='Blues_r')  # Blues_r gives darker blues for deeper water
+        
+        # Plot krill locations
+        scatter = ax.scatter(self.krillData.LONGITUDE, self.krillData.LATITUDE, 
+                           c=self.krillData.BATHYMETRY, cmap='Blues_r', 
+                           s=20, edgecolor='black', linewidth=0.5)
+        
+        plt.colorbar(im, ax=ax, label='Ocean Depth (m)')
+        ax.set_title('Ocean Bathymetry and Krill Locations')
+        ax.set_xlabel('Longitude')
+        ax.set_ylabel('Latitude')
+        
+        plt.tight_layout()
+        plotName = DataFusion.bathymetrySaveFig
+        plt.savefig(os.path.join(self.outputPath, plotName), dpi=300, bbox_inches='tight')
+        plt.close()
+        self.logger.info(f"Saved bathymetry plot to: {plotName}")
+        return
+
+class DownloadSST:
+    def __init__(self):
+        pass

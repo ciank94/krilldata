@@ -15,13 +15,11 @@ class ReadKrillBase:
         subsets lon and lat ranges\n\
         visualises: `output/krillDistributions.png`\n\
         prints head and tail of data to terminal\n"
-
+        
     defaultVariableSubset = [
         "DATE",
         "LONGITUDE",
         "LATITUDE",
-        "CLIMATOLOGICAL_TEMPERATURE",
-        "WATER_DEP_MEAN_WITHIN_10KM",
         "STANDARDISED_KRILL_UNDER_1M2"
     ]
     defaultLonRange = (-70, -31)
@@ -112,10 +110,8 @@ class ReadKrillBase:
         Create a figure with multiple subplots showing distributions of:
         - Krill densities (log10 transformed)
         - Years
-        - Months
         - Latitude
         - Longitude
-        - Climatological temperature
         """
         # Define colors
         barColor = '#7FB3D5'  # Soft blue
@@ -124,8 +120,8 @@ class ReadKrillBase:
         lineWidth = 2.5  # Thicker line for better visibility
         
         plt.rcParams.update({'font.size': 12})
-        fig = plt.figure(figsize=(20, 8))  # Wider layout
-        gs = plt.GridSpec(2, 3, figure=fig)
+        fig = plt.figure(figsize=(12, 10))
+        gs = plt.GridSpec(2, 2)
         
         # Krill densities histogram
         ax1 = fig.add_subplot(gs[0, 0])
@@ -152,59 +148,32 @@ class ReadKrillBase:
         ax2.tick_params(axis='both', which='major', labelsize=12)
         ax2Twin.tick_params(axis='y', colors=lineColor, labelsize=12)
         ax2Twin.set_ylim(0, 105)
-
-        # Months histogram
-        ax3 = fig.add_subplot(gs[0, 2])
-        n3, bins3, _ = ax3.hist(self.fileDataSubset.DATE.dt.month, bins=np.arange(1, 14), color=barColor, 
+        
+        # Latitude histogram
+        ax3 = fig.add_subplot(gs[1, 0])
+        n4, bins4, _ = ax3.hist(self.fileDataSubset.LATITUDE, bins=30, color=barColor, 
                                edgecolor='white', alpha=barAlpha, linewidth=1)
         ax3Twin = ax3.twinx()
-        ax3Twin.plot(bins3[:-1], np.cumsum(n3)/np.sum(n3)*100, color=lineColor, linewidth=lineWidth)
-        ax3.set_xlabel('Month', fontsize=14)
+        ax3Twin.plot(bins4[:-1], np.cumsum(n4)/np.sum(n4)*100, color=lineColor, linewidth=lineWidth)
+        ax3.set_xlabel('Latitude', fontsize=14)
         ax3.set_ylabel('Count', fontsize=14)
         ax3Twin.set_ylabel('Cumulative %', fontsize=14, color=lineColor)
         ax3.tick_params(axis='both', which='major', labelsize=12)
         ax3Twin.tick_params(axis='y', colors=lineColor, labelsize=12)
-        ax3.set_xticks(np.arange(1, 13))
         ax3Twin.set_ylim(0, 105)
         
-        # Latitude histogram
-        ax4 = fig.add_subplot(gs[1, 0])
-        n4, bins4, _ = ax4.hist(self.fileDataSubset.LATITUDE, bins=30, color=barColor, 
+        # Longitude histogram
+        ax4 = fig.add_subplot(gs[1, 1])
+        n5, bins5, _ = ax4.hist(self.fileDataSubset.LONGITUDE, bins=30, color=barColor, 
                                edgecolor='white', alpha=barAlpha, linewidth=1)
         ax4Twin = ax4.twinx()
-        ax4Twin.plot(bins4[:-1], np.cumsum(n4)/np.sum(n4)*100, color=lineColor, linewidth=lineWidth)
-        ax4.set_xlabel('Latitude', fontsize=14)
+        ax4Twin.plot(bins5[:-1], np.cumsum(n5)/np.sum(n5)*100, color=lineColor, linewidth=lineWidth)
+        ax4.set_xlabel('Longitude', fontsize=14)
         ax4.set_ylabel('Count', fontsize=14)
         ax4Twin.set_ylabel('Cumulative %', fontsize=14, color=lineColor)
         ax4.tick_params(axis='both', which='major', labelsize=12)
         ax4Twin.tick_params(axis='y', colors=lineColor, labelsize=12)
         ax4Twin.set_ylim(0, 105)
-        
-        # Longitude histogram
-        ax5 = fig.add_subplot(gs[1, 1])
-        n5, bins5, _ = ax5.hist(self.fileDataSubset.LONGITUDE, bins=30, color=barColor, 
-                               edgecolor='white', alpha=barAlpha, linewidth=1)
-        ax5Twin = ax5.twinx()
-        ax5Twin.plot(bins5[:-1], np.cumsum(n5)/np.sum(n5)*100, color=lineColor, linewidth=lineWidth)
-        ax5.set_xlabel('Longitude', fontsize=14)
-        ax5.set_ylabel('Count', fontsize=14)
-        ax5Twin.set_ylabel('Cumulative %', fontsize=14, color=lineColor)
-        ax5.tick_params(axis='both', which='major', labelsize=12)
-        ax5Twin.tick_params(axis='y', colors=lineColor, labelsize=12)
-        ax5Twin.set_ylim(0, 105)
-        
-        # Temperature histogram
-        ax6 = fig.add_subplot(gs[1, 2])
-        n6, bins6, _ = ax6.hist(self.fileDataSubset.CLIMATOLOGICAL_TEMPERATURE, bins=30, color=barColor, 
-                               edgecolor='white', alpha=barAlpha, linewidth=1)
-        ax6Twin = ax6.twinx()
-        ax6Twin.plot(bins6[:-1], np.cumsum(n6)/np.sum(n6)*100, color=lineColor, linewidth=lineWidth)
-        ax6.set_xlabel('Temperature (°C)', fontsize=14)
-        ax6.set_ylabel('Count', fontsize=14)
-        ax6Twin.set_ylabel('Cumulative %', fontsize=14, color=lineColor)
-        ax6.tick_params(axis='both', which='major', labelsize=12)
-        ax6Twin.tick_params(axis='y', colors=lineColor, labelsize=12)
-        ax6Twin.set_ylim(0, 105)
         
         plt.tight_layout()
         # Save figure with high DPI
