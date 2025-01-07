@@ -2,8 +2,8 @@ import logging
 import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 import os
-import sys
 import copernicusmarine as cop
 
 class DataFusion:
@@ -18,8 +18,10 @@ class DataFusion:
     # filenames:
     bathymetryFilename = "bathymetry.nc"
     sstFilename = "sst.nc"
+    fusedFilename = "fusedData.csv"
     bathymetrySaveFig = "bathymetryVerification.png"
     sstSaveFig = "sstVerification.png"
+    fusedSaveFig = "fusedDistributions.png"
 
     def __init__(self, krillData, inputPath, outputPath):
         # Instance variables
@@ -41,8 +43,21 @@ class DataFusion:
         return
 
     def fuseData(self):
-        self.fuseBathymetry()
-        self.fuseSST()
+        if os.path.exists(os.path.join(self.outputPath, DataFusion.fusedFilename)):
+            self.logger.info(f"File already exists: {DataFusion.fusedFilename}")
+        else:
+            self.fuseBathymetry()
+            self.fuseSST()
+            self.fuseSave()
+
+        self.krillData = pd.read_csv(os.path.join(self.outputPath, DataFusion.fusedFilename))
+
+        if os.path.exists(os.path.join(self.outputPath, DataFusion.fusedSaveFig)):
+            self.logger.info(f"File already exists: {DataFusion.fusedSaveFig}")
+        else:
+            self.logger.info(f"File does not exist: {DataFusion.fusedSaveFig}")
+            self.logger.info(f"File will be created: {DataFusion.fusedSaveFig}")
+            self.fusePlot()
         return
 
     def fuseBathymetry(self):
@@ -54,7 +69,7 @@ class DataFusion:
         lonKrill = self.krillData.LONGITUDE
         latNearest, lonNearest = self.findNearestPoints(latBath, lonBath, latKrill, lonKrill)
         for idx, (latIdx, lonIdx) in enumerate(zip(latNearest, lonNearest)):
-            self.krillData.loc[idx, "BATHYMETRY"] = elevation[latIdx, lonIdx]
+            self.krillData.loc[idx, "BATHYMETRY"] = abs(elevation[latIdx, lonIdx])
         
         self.logger.info(f"Finished fusing bathymetry data")
         self.logger.info(f"{self.krillData.head()}")
@@ -102,6 +117,11 @@ class DataFusion:
             self.logger.info(f"File will be created: {DataFusion.sstSaveFig}")
             bathymetryDataset = xr.open_dataset(self.bathymetryPath)
             self.plotSST(bathymetryDataset)
+        return
+
+    def fuseSave(self):
+        self.krillData.to_csv(os.path.join(self.outputPath, DataFusion.fusedFilename), index=False)
+        self.logger.info(f"Saved fused data to: {DataFusion.fusedFilename}")
         return
 
     def findNearestPoints(self, latGrid, lonGrid, latPoints, lonPoints):
@@ -218,6 +238,52 @@ class DataFusion:
         plt.savefig(os.path.join(self.outputPath, plotName), dpi=300, bbox_inches='tight')
         plt.close()
         self.logger.info(f"Saved sst plot to: {plotName}")
+        return
+
+    def fusePlot(self):
+        """Create a figure with histograms showing distributions of bathymetry and SST"""
+        # Define colors
+        barColor = '#7FB3D5'  # Soft blue
+        lineColor = '#E74C3C'  # Bright red
+        barAlpha = 0.7  # Transparency for bars
+        lineWidth = 2.5  # Thicker line for better visibility
+        
+        plt.rcParams.update({'font.size': 12})
+        fig = plt.figure(figsize=(12, 5))
+        gs = plt.GridSpec(1, 2)
+        
+        # Bathymetry histogram
+        ax1 = fig.add_subplot(gs[0, 0])
+        n1, bins1, _ = ax1.hist(self.krillData.BATHYMETRY, bins=30, color=barColor, 
+                               edgecolor='white', alpha=barAlpha, linewidth=1)
+        ax1Twin = ax1.twinx()
+        ax1Twin.plot(bins1[:-1], np.cumsum(n1)/np.sum(n1)*100, color=lineColor, linewidth=lineWidth)
+        ax1.set_xlabel('Depth (m)', fontsize=14)
+        ax1.set_ylabel('Count', fontsize=14)
+        ax1Twin.set_ylabel('Cumulative %', fontsize=14, color=lineColor)
+        ax1.tick_params(axis='both', which='major', labelsize=12)
+        ax1Twin.tick_params(axis='y', colors=lineColor, labelsize=12)
+        ax1Twin.set_ylim(0, 105)
+        
+        # SST histogram
+        ax2 = fig.add_subplot(gs[0, 1])
+        n2, bins2, _ = ax2.hist(self.krillData.SST, bins=30, color=barColor, 
+                               edgecolor='white', alpha=barAlpha, linewidth=1)
+        ax2Twin = ax2.twinx()
+        ax2Twin.plot(bins2[:-1], np.cumsum(n2)/np.sum(n2)*100, color=lineColor, linewidth=lineWidth)
+        ax2.set_xlabel('Sea Surface Temperature (°C)', fontsize=14)
+        ax2.set_ylabel('Count', fontsize=14)
+        ax2Twin.set_ylabel('Cumulative %', fontsize=14, color=lineColor)
+        ax2.tick_params(axis='both', which='major', labelsize=12)
+        ax2Twin.tick_params(axis='y', colors=lineColor, labelsize=12)
+        ax2Twin.set_ylim(0, 105)
+        
+        plt.tight_layout()
+        # Save figure with high DPI
+        plotName = DataFusion.fusedSaveFig
+        fig.savefig(os.path.join(self.outputPath, plotName), dpi=300, bbox_inches='tight')
+        plt.close()
+        self.logger.info(f"Saved fused distributions plot to: {plotName}")
         return
 
 class DownloadSST:
