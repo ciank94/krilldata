@@ -3,6 +3,8 @@ import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import sys
+import copernicusmarine as cop
 
 class DataFusion:
     # logger
@@ -17,6 +19,7 @@ class DataFusion:
     bathymetryFilename = "bathymetry.nc"
     sstFilename = "sst.nc"
     bathymetrySaveFig = "bathymetryVerification.png"
+    sstSaveFig = "sstVerification.png"
 
     def __init__(self, krillData, inputPath, outputPath):
         # Instance variables
@@ -66,8 +69,39 @@ class DataFusion:
         return
 
     def fuseSST(self):
-        DownloadSST()
-        breakpoint()
+        self.logger.info(f"Downloading SST data...")
+        if not os.path.exists(self.sstPath):
+            self.logger.info(f"File does not exist: {DataFusion.sstFilename}")
+            self.logger.info(f"LARGE FILE WILL BE DOWNLOADED: {DataFusion.sstFilename}")
+            DownloadSST()
+        else:
+            self.logger.info(f"File already exists: {DataFusion.sstFilename}")
+
+        sstDataset = xr.open_dataset(self.sstPath)
+        lonSST = sstDataset["longitude"].data
+        latSST = sstDataset["latitude"].data
+        timeSST = sstDataset["time"].data
+        latKrill = self.krillData.LATITUDE
+        lonKrill = self.krillData.LONGITUDE
+        timeKrill = self.krillData.DATE
+        latNearest, lonNearest = self.findNearestPoints(latSST, lonSST, latKrill, lonKrill)
+        timeIndices = self.findNearestTime(timeSST, timeKrill)
+        self.logger.info(f"Finding nearest SST time for each krill observation")
+        for idx, (latIdx, lonIdx, timeIdx) in enumerate(zip(latNearest, lonNearest, timeIndices)):
+             init_val = sstDataset["analysed_sst"][timeIdx, latIdx, lonIdx]
+             self.krillData.loc[idx, "SST"] = init_val.data - 273.15  # Convert Kelvin to Celsius
+             #self.logger.info(f"SST value at index {idx} is {init_val.data}")
+
+        
+        self.logger.info(f"Finished fusing SST data")
+        self.logger.info(f"{self.krillData.head()}")
+        if os.path.exists(os.path.join(self.outputPath, DataFusion.sstSaveFig)):
+            self.logger.info(f"File already exists: {DataFusion.sstSaveFig}")
+        else:
+            self.logger.info(f"File does not exist: {DataFusion.sstSaveFig}")
+            self.logger.info(f"File will be created: {DataFusion.sstSaveFig}")
+            bathymetryDataset = xr.open_dataset(self.bathymetryPath)
+            self.plotSST(bathymetryDataset)
         return
 
     def findNearestPoints(self, latGrid, lonGrid, latPoints, lonPoints):
@@ -98,6 +132,29 @@ class DataFusion:
                             lonIdx-1, lonIdx)
         
         return latNearest, lonNearest
+
+    def findNearestTime(self, timeSST, timeKrill):
+        """Find nearest time in SST dataset for each krill observation.
+        
+        Args:
+            timeSST: Array of datetime values from SST dataset
+            timeKrill: Array of datetime values from krill observations
+            
+        Returns:
+            Array of indices of nearest SST times for each krill observation
+        """
+        # Convert pandas Timestamp to numpy datetime64
+        timeKrill_np = np.array([np.datetime64(t) for t in timeKrill])
+        timeSST_np = np.array([np.datetime64(t) for t in timeSST])
+        
+        # Initialize array to store indices
+        timeIndices = np.zeros(len(timeKrill), dtype=int)
+        
+        for i in range(len(timeKrill)):
+            timeDiff = np.abs(timeSST_np - timeKrill_np[i])
+            timeIndices[i] = np.argmin(timeDiff)
+            
+        return timeIndices
 
     def plotBathymetry(self, bathymetryDataset):
         """Create a figure showing bathymetry data and krill locations"""
@@ -131,6 +188,93 @@ class DataFusion:
         self.logger.info(f"Saved bathymetry plot to: {plotName}")
         return
 
+    def plotSST(self, bathymetryDataset):
+        """Create a figure showing bathymetry data and krill locations"""
+        self.logger.info("Plotting sst data...")
+        
+        # Create masked array for bathymetry where elevation <= 0
+        bathymetry = bathymetryDataset.elevation.values
+        masked_bathymetry = np.ma.masked_where(bathymetry > 0, bathymetry)
+        
+        fig, ax = plt.subplots(figsize=(10, 8))
+        
+        # Plot bathymetry with ocean-focused colormap
+        im = ax.pcolormesh(bathymetryDataset.lon, bathymetryDataset.lat, 
+                          masked_bathymetry, shading='auto', 
+                          cmap='Blues_r')  # Blues_r gives darker blues for deeper water
+        
+        # Plot krill locations
+        scatter = ax.scatter(self.krillData.LONGITUDE, self.krillData.LATITUDE, 
+                           c=self.krillData.SST, cmap='hot', 
+                           s=20, edgecolor='black', linewidth=0.5)
+        
+        plt.colorbar(im, ax=ax, label='Ocean Depth (m)')
+        ax.set_title('Ocean Bathymetry, sst and Krill Locations')
+        ax.set_xlabel('Longitude')
+        ax.set_ylabel('Latitude')
+        
+        plt.tight_layout()
+        plotName = DataFusion.sstSaveFig
+        plt.savefig(os.path.join(self.outputPath, plotName), dpi=300, bbox_inches='tight')
+        plt.close()
+        self.logger.info(f"Saved sst plot to: {plotName}")
+        return
+
 class DownloadSST:
+    defaultRequest = {
+            'dataID': 'METOFFICE-GLO-SST-L4-REP-OBS-SST',
+            'configurePath': 'C:/Users/ciank/.copernicusmarine/.copernicusmarine-credentials',
+            'outputFilename': 'input/sst.nc',
+            'startDate': "1981-10-01T00:00:00",
+            'endDate': "2016-10-01T00:00:00",
+            'lonBounds': [-70, -31],
+            'latBounds': [-73, -50],
+            'variables': ['analysed_sst']
+        }
+
     def __init__(self):
-        pass
+        self.dataID = DownloadSST.defaultRequest['dataID']
+        self.configurePath = DownloadSST.defaultRequest['configurePath']
+        self.outputFilename = DownloadSST.defaultRequest['outputFilename']
+        self.startDate = DownloadSST.defaultRequest['startDate']
+        self.endDate = DownloadSST.defaultRequest['endDate']
+        self.lonBounds = DownloadSST.defaultRequest['lonBounds']
+        self.latBounds = DownloadSST.defaultRequest['latBounds']
+        self.variables = DownloadSST.defaultRequest['variables']
+
+        # log request details and process request;
+        self.initLogger()
+        self.downloadSST()
+        return
+
+    def initLogger(self):
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.info(f"================={self.__class__.__name__}=====================")
+        self.logger.info(f"Initializing {self.__class__.__name__}")
+        self.logger.info(f"=================Request parameters=====================")
+        self.logger.info(f"DataID: {self.dataID}")    
+        self.logger.info(f"Configure path: {self.configurePath}")
+        self.logger.info(f"Output path: {self.outputFilename}")
+        self.logger.info(f"Start date: {self.startDate}")
+        self.logger.info(f"End date: {self.endDate}")
+        self.logger.info(f"Longitude bounds: {self.lonBounds}")
+        self.logger.info(f"Latitude bounds: {self.latBounds}")
+        self.logger.info(f"Variables: {self.variables}")   
+        return
+
+    def downloadSST(self):
+        self.logger.info(f"Downloading SST data...")
+        cop.subset(
+            dataset_id=self.dataID,
+            variables=self.variables,
+            start_datetime=self.startDate,
+            end_datetime=self.endDate,
+            minimum_longitude=self.lonBounds[0],
+            maximum_longitude=self.lonBounds[1],
+            minimum_latitude=self.latBounds[0],
+            maximum_latitude=self.latBounds[1],
+            output_filename=self.outputFilename,
+            credentials_file=self.configurePath,
+            force_download=True,
+        )
+        return
