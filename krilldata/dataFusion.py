@@ -18,7 +18,7 @@ class DataFusion:
     # filenames:
     bathymetryFilename = "bathymetry.nc"
     sstFilename = "sst.nc"
-    fusedFilename = "fusedData.csv"
+    fusedFilename = "krillFusedData.csv"
     bathymetrySaveFig = "bathymetryVerification.png"
     sstSaveFig = "sstVerification.png"
     fusedSaveFig = "fusedDistributions.png"
@@ -43,14 +43,14 @@ class DataFusion:
         return
 
     def fuseData(self):
-        if os.path.exists(os.path.join(self.outputPath, DataFusion.fusedFilename)):
+        if os.path.exists(os.path.join(self.inputPath, DataFusion.fusedFilename)):
             self.logger.info(f"File already exists: {DataFusion.fusedFilename}")
         else:
             self.fuseBathymetry()
             self.fuseSST()
             self.fuseSave()
 
-        self.krillData = pd.read_csv(os.path.join(self.outputPath, DataFusion.fusedFilename))
+        self.krillData = pd.read_csv(os.path.join(self.inputPath, DataFusion.fusedFilename))
 
         if os.path.exists(os.path.join(self.outputPath, DataFusion.fusedSaveFig)):
             self.logger.info(f"File already exists: {DataFusion.fusedSaveFig}")
@@ -120,7 +120,7 @@ class DataFusion:
         return
 
     def fuseSave(self):
-        self.krillData.to_csv(os.path.join(self.outputPath, DataFusion.fusedFilename), index=False)
+        self.krillData.to_csv(os.path.join(self.inputPath, DataFusion.fusedFilename), index=False)
         self.logger.info(f"Saved fused data to: {DataFusion.fusedFilename}")
         return
 
