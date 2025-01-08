@@ -1,3 +1,3 @@
 from .readKrillbase import ReadKrillBase
 from .dataFusion import DataFusion
-from .krillPredict import KrillPredict
+from .krillTrain import KrillTrain

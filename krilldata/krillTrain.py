@@ -6,10 +6,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 
 
-class KrillPredict:
+class KrillTrain:
     # logger
     logging.basicConfig(level=logging.INFO)
-    loggerDescription = "\nKrillPredict class description:\n\
+    loggerDescription = "\nKrillTrain class description:\n\
         reads fusedData from output of DataFusion class\n\
         ML preprocess: feature scaling, train/test split\n\
         ML model: random forest\n\
@@ -30,7 +30,7 @@ class KrillPredict:
         #====Instance variables====
         self.inputPath = inputPath
         self.outputPath = outputPath
-        self.fusedDataPath = f"{inputPath}/{KrillPredict.fusedDataFilename}"
+        self.fusedDataPath = f"{inputPath}/{KrillTrain.fusedDataFilename}"
         self.fusedData = {}
         self.df = None
         self.X = None
@@ -58,7 +58,7 @@ class KrillPredict:
     def initLogger(self):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.info(f"================={self.__class__.__name__}=====================")
-        self.logger.info(f"{KrillPredict.loggerDescription}")
+        self.logger.info(f"{KrillTrain.loggerDescription}")
         return
 
     def readData(self):
@@ -109,13 +109,12 @@ class KrillPredict:
             **kwargs: Additional arguments to pass to the model constructor e.g. n_estimators, max_depth
         """
         self.logger.info(f"Training {model_type} model...")
-        
-        if model_type not in KrillPredict.models:
+        if model_type not in KrillTrain.models:
             raise ValueError(f"Model type '{model_type}' not supported. Choose from: \
-            {list(KrillPredict.models.keys())}")
+            {list(KrillTrain.models.keys())}")
         
         # Initialize the selected model with any provided kwargs
-        model_class = KrillPredict.models[model_type]
+        model_class = KrillTrain.models[model_type]
         self.model = model_class(**kwargs)
         
         # Train the model
@@ -124,6 +123,7 @@ class KrillPredict:
         return
     
     def modelMetrics(self):
+        """Calculate metrics for the trained model."""
         self.logger.info(f"Calculating metrics...")
         y_pred = self.model.predict(self.X_test)
         self.logger.info(f"R^2: {r2_score(self.y_test, y_pred)}")
