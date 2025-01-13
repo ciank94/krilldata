@@ -8,4 +8,5 @@ package for training and predicting krill density using multivariable regression
 - krillPredict.py handles prediction of krill density using trained models
 
 ## Usage (usage/)
-- mapKrill.py contains example workflow for training and predicting krill density
+- train.py contains example workflow for training model to predict krill density
+- mapKrill.py contains example workflow for mapping predicted krill density on input features

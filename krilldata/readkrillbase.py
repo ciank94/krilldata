@@ -3,7 +3,6 @@ import numpy as np
 import logging
 import os
 import matplotlib.pyplot as plt
-import sys
 
 
 class ReadKrillBase:
@@ -33,6 +32,7 @@ class ReadKrillBase:
     logging.basicConfig(level=logging.INFO) # set logging level for class
     
     def __init__(self, inputPath, outputPath):
+        self.inputPath = inputPath
         self.outputPath = outputPath
         self.file = f"{inputPath}/krillbase.csv"
         self.fileData = None
@@ -41,6 +41,7 @@ class ReadKrillBase:
         return
 
     def processData(self):
+        os.makedirs(self.inputPath, exist_ok=True)
         os.makedirs(self.outputPath, exist_ok=True)
         self.initLogger()  
         self.variableSubset()
