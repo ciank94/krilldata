@@ -1,13 +1,15 @@
 from joblib import load
 
 
-
 #todo: predict
 class KrillPredict:
-    def __init__(self, inputPath, outputPath):
+    def __init__(self, inputPath, outputPath, modelType):
         self.inputPath = inputPath
         self.outputPath = outputPath
-        
+        self.modelType = modelType
+        self.model = load(f"{inputPath}/{self.modelType}Model.joblib")
+        return
+
     def predict(self):
-        model = load('path/to/gbrModel.joblib')  # or rfModel.joblib for random forest
-        predictions = model.predict(new_data)
+        predictions = self.model.predict(new_data)
+        return

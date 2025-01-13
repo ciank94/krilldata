@@ -28,7 +28,7 @@ class KrillTrain:
         'gbr': GradientBoostingRegressor
     }
 
-    def __init__(self, inputPath, outputPath):
+    def __init__(self, inputPath, outputPath, modelType):
         #====Instance variables====
         self.inputPath = inputPath
         self.outputPath = outputPath
@@ -42,7 +42,8 @@ class KrillTrain:
         self.y_train = None
         self.y_test = None
         self.model = None
-        self.modelType = None
+        self.modelType = modelType
+        self.modelParams = json.load(open("krilldata/model_params.json"))
 
         #====Class Methods====
         self.preprocess()
@@ -61,7 +62,7 @@ class KrillTrain:
     def training(self):
         #====ML====
         self.trainTestSplit()
-        self.trainModel(model_type='gbr', n_estimators=100, learning_rate=0.1, max_depth=3)
+        self.trainModel()
         self.modelMetrics()
         self.saveMetrics()
         self.saveModel()                        
@@ -69,9 +70,12 @@ class KrillTrain:
 
     #====================Preprocess methods====================
     def initLogger(self):
+        if self.modelType not in self.modelParams:
+            raise ValueError(f"Model type '{self.modelType}' not found in parameters file. Available types: {list(self.modelParams.keys())}")
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.info(f"================={self.__class__.__name__}=====================")
         self.logger.info(f"{KrillTrain.loggerDescription}")
+        self.logger.info(f"Loaded parameters for {self.modelType}: {self.modelParams[self.modelType]}")
         return
 
     def readData(self):
@@ -117,22 +121,27 @@ class KrillTrain:
         self.logger.info(f"Finished train/test split with {len(self.X_train)} training samples and {len(self.X_test)} test samples")
         return
 
-    def trainModel(self, model_type='rf', **kwargs):
+    def trainModel(self, **kwargs):
         """Train a specified machine learning model.
-            **kwargs: Additional arguments to pass to the model constructor e.g. n_estimators, max_depth
+            **kwargs: Additional arguments to pass to the model constructor. If not provided, 
+            default parameters from model_params.json will be used.
         """
-        self.logger.info(f"Training {model_type} model...")
-        if model_type not in KrillTrain.models:
-            raise ValueError(f"Model type '{model_type}' not supported. Choose from: \
+        self.logger.info(f"Training {self.modelType} model...")
+        if self.modelType not in KrillTrain.models:
+            raise ValueError(f"Model type '{self.modelType}' not supported. Choose from: \
             {list(KrillTrain.models.keys())}")
-        self.modelType = model_type
-        # Initialize the selected model with any provided kwargs
-        model_class = KrillTrain.models[model_type]
+            
+        # Use default parameters if none provided
+        if not kwargs:
+            kwargs = self.modelParams[self.modelType]
+            
+        # Initialize the selected model with parameters
+        model_class = KrillTrain.models[self.modelType]
         self.model = model_class(**kwargs)
         
         # Train the model
         self.model.fit(self.X_train, self.y_train)
-        self.logger.info(f"Finished {model_type} training")
+        self.logger.info(f"Finished {self.modelType} training")
         return
     
     def modelMetrics(self):
@@ -182,11 +191,11 @@ class KrillTrain:
         model_class = KrillTrain.models[self.modelType]
         full_model = model_class(**self.model.get_params())
         
-        # Train on full dataset
+        # fit the full dataset
         full_model.fit(self.X, self.y)
         
         # Save the model
-        model_filename = f"{self.outputPath}/{self.modelType}Model.joblib"
+        model_filename = f"{self.inputPath}/{self.modelType}Model.joblib"
         dump(full_model, model_filename)
         self.logger.info(f"Saved model to {model_filename}")
         return
