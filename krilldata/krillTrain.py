@@ -1,6 +1,7 @@
 import logging
 import pandas as pd
 import numpy as np
+import json
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
@@ -20,7 +21,7 @@ class KrillTrain:
 
     fusedDataFilename = "krillFusedData.csv"
 
-    # Dictionary of available models
+    # Dictionary of available model classes
     models = {
         'rf': RandomForestRegressor,
         'gbr': GradientBoostingRegressor
@@ -40,18 +41,28 @@ class KrillTrain:
         self.y_train = None
         self.y_test = None
         self.model = None
+        self.modelType = None
 
+        #====Class Methods====
+        self.preprocess()
+        self.training()
+        return
+
+    def preprocess(self):
         #====Preprocess====
         self.initLogger()
         self.readData()
         self.scaleFeatures()
         self.handleNan()
         self.loadXy()
+        return
 
+    def training(self):
         #====ML====
         self.trainTestSplit()
         self.trainModel(model_type='gbr', n_estimators=100, learning_rate=0.1, max_depth=3)
         self.modelMetrics()
+        self.saveMetrics()
         return
 
     #====================Preprocess methods====================
@@ -112,7 +123,7 @@ class KrillTrain:
         if model_type not in KrillTrain.models:
             raise ValueError(f"Model type '{model_type}' not supported. Choose from: \
             {list(KrillTrain.models.keys())}")
-        
+        self.modelType = model_type
         # Initialize the selected model with any provided kwargs
         model_class = KrillTrain.models[model_type]
         self.model = model_class(**kwargs)
@@ -126,11 +137,35 @@ class KrillTrain:
         """Calculate metrics for the trained model."""
         self.logger.info(f"Calculating metrics...")
         y_pred = self.model.predict(self.X_test)
-        self.logger.info(f"R^2: {r2_score(self.y_test, y_pred)}")
+        r2 = r2_score(self.y_test, y_pred)
+        self.logger.info(f"R^2: {r2}")
         mse = mean_squared_error(self.y_test, y_pred)
         rmse = np.sqrt(mse)
         normalised_rmse = rmse / (self.y_train.max() - self.y_train.min())
         self.logger.info(f"MSE: {mse}")
         self.logger.info(f"RMSE: {rmse}")
         self.logger.info(f"Normalised RMSE: {normalised_rmse}")
+        
+        # Store metrics in a dictionary
+        self.metrics = {
+            'model_name': self.modelType,
+            'r2': r2,
+            'mse': mse,
+            'rmse': rmse,
+            'normalised_rmse': normalised_rmse,
+            'timestamp': '2025-01-13T10:13:29+01:00'
+        }
+        self.logger.info(f"Stored dictionary of metrics: {self.metrics}")
+        return
+        
+    def saveMetrics(self):
+        """Save model metrics to a JSON file."""
+        if not hasattr(self, 'metrics'):
+            self.logger.warning("No metrics available to save")
+            return
+            
+        metrics_filename = f"{self.outputPath}/{self.metrics['model_name']}Metrics.json"
+        with open(metrics_filename, 'w') as f:
+            json.dump(self.metrics, f, indent=4)
+        self.logger.info(f"Saved metrics to {metrics_filename}")
         return
