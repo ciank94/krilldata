@@ -1,7 +1,11 @@
 # krilldata
-package for handling krill data
+package for training and predicting krill density using multivariable regression methods
 
-## Description
-- handles reading data from krillbase
-- logs info about krill data structure (dimensions, variables, resolution, etc.)
-- contains plotting functions for visualizing datasets
+## Source code (krilldata/)
+- readKrillBase.py handles reading and preprocessing data from krillbase
+- dataFusion.py handles preprocessing of bathymetry and SST data, and fusion with krill observations
+- krillTrain.py handles training of regression models
+- krillPredict.py handles prediction of krill density using trained models
+
+## Usage (usage/)
+- mapKrill.py contains example workflow for training and predicting krill density
