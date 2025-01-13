@@ -1,6 +1,11 @@
-from krilldata import ReadKrillBase, DataFusion, KrillTrain
+from krilldata import (
+    ReadKrillBase,
+    DataFusion,
+    KrillTrain,
+    KrillPredict
+)
 
-#===============Input & Output Paths===============
+#===============IO Paths & model parameters===============
 inputPath = "input/"
 outputPath = "output/"
 
@@ -12,3 +17,6 @@ DataFusion(kb.fileDataSubset, inputPath, outputPath) # fuse bathymetry, SST & kr
 
 # ================KrillTrain class===============
 KrillTrain(inputPath, outputPath) # read fused data and train regressor
+
+# ================KrillPredict class===============
+KrillPredict(inputPath, outputPath) # read trained model and make predictions

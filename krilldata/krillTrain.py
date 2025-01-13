@@ -5,6 +5,7 @@ import json
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from joblib import dump
 
 
 class KrillTrain:
@@ -63,6 +64,7 @@ class KrillTrain:
         self.trainModel(model_type='gbr', n_estimators=100, learning_rate=0.1, max_depth=3)
         self.modelMetrics()
         self.saveMetrics()
+        self.saveModel()                        
         return
 
     #====================Preprocess methods====================
@@ -168,4 +170,23 @@ class KrillTrain:
         with open(metrics_filename, 'w') as f:
             json.dump(self.metrics, f, indent=4)
         self.logger.info(f"Saved metrics to {metrics_filename}")
+        return
+
+    def saveModel(self):
+        """Train model on full dataset and save it for later predictions.
+        The model is trained on all available data (not just training set) 
+        to maximize its predictive power for future use."""
+        self.logger.info(f"Training {self.modelType} model on full dataset...")
+        
+        # Initialize a new model with the same parameters
+        model_class = KrillTrain.models[self.modelType]
+        full_model = model_class(**self.model.get_params())
+        
+        # Train on full dataset
+        full_model.fit(self.X, self.y)
+        
+        # Save the model
+        model_filename = f"{self.outputPath}/{self.modelType}Model.joblib"
+        dump(full_model, model_filename)
+        self.logger.info(f"Saved model to {model_filename}")
         return
