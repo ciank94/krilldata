@@ -51,13 +51,7 @@ class DataFusion:
             self.fuseSave()
 
         self.krillData = pd.read_csv(os.path.join(self.inputPath, DataFusion.fusedFilename))
-
-        if os.path.exists(os.path.join(self.outputPath, DataFusion.fusedSaveFig)):
-            self.logger.info(f"File already exists: {DataFusion.fusedSaveFig}")
-        else:
-            self.logger.info(f"File does not exist: {DataFusion.fusedSaveFig}")
-            self.logger.info(f"File will be created: {DataFusion.fusedSaveFig}")
-            self.fusePlot()
+        self.checkPlot()
         return
 
     def fuseBathymetry(self):
@@ -73,14 +67,6 @@ class DataFusion:
         
         self.logger.info(f"Finished fusing bathymetry data")
         self.logger.info(f"{self.krillData.head()}")
-        
-        # Plot bathymetry at krill locations
-        if os.path.exists(os.path.join(self.outputPath, DataFusion.bathymetrySaveFig)):
-            self.logger.info(f"File already exists: {DataFusion.bathymetrySaveFig}")
-        else:
-            self.logger.info(f"File does not exist: {DataFusion.bathymetrySaveFig}")
-            self.logger.info(f"File will be created: {DataFusion.bathymetrySaveFig}")
-            self.plotBathymetry(bathymetryDataset)
         return
 
     def fuseSST(self):
@@ -110,6 +96,15 @@ class DataFusion:
         
         self.logger.info(f"Finished fusing SST data")
         self.logger.info(f"{self.krillData.head()}")
+        return
+
+    def fuseSave(self):
+        self.krillData.to_csv(os.path.join(self.inputPath, DataFusion.fusedFilename), index=False)
+        self.logger.info(f"Saved fused data to: {DataFusion.fusedFilename}")
+        return
+
+    def checkPlot(self):
+        # Plot SST at krill locations
         if os.path.exists(os.path.join(self.outputPath, DataFusion.sstSaveFig)):
             self.logger.info(f"File already exists: {DataFusion.sstSaveFig}")
         else:
@@ -117,11 +112,22 @@ class DataFusion:
             self.logger.info(f"File will be created: {DataFusion.sstSaveFig}")
             bathymetryDataset = xr.open_dataset(self.bathymetryPath)
             self.plotSST(bathymetryDataset)
-        return
 
-    def fuseSave(self):
-        self.krillData.to_csv(os.path.join(self.inputPath, DataFusion.fusedFilename), index=False)
-        self.logger.info(f"Saved fused data to: {DataFusion.fusedFilename}")
+        # Plot bathymetry at krill locations
+        if os.path.exists(os.path.join(self.outputPath, DataFusion.bathymetrySaveFig)):
+            self.logger.info(f"File already exists: {DataFusion.bathymetrySaveFig}")
+        else:
+            self.logger.info(f"File does not exist: {DataFusion.bathymetrySaveFig}")
+            self.logger.info(f"File will be created: {DataFusion.bathymetrySaveFig}")
+            self.plotBathymetry(bathymetryDataset)
+
+        # Plot fused data
+        if os.path.exists(os.path.join(self.outputPath, DataFusion.fusedSaveFig)):
+            self.logger.info(f"File already exists: {DataFusion.fusedSaveFig}")
+        else:
+            self.logger.info(f"File does not exist: {DataFusion.fusedSaveFig}")
+            self.logger.info(f"File will be created: {DataFusion.fusedSaveFig}")
+            self.fusePlot()
         return
 
     def findNearestPoints(self, latGrid, lonGrid, latPoints, lonPoints):
@@ -181,19 +187,21 @@ class DataFusion:
         self.logger.info("Plotting bathymetry data...")
         
         # Create masked array for bathymetry where elevation <= 0
-        bathymetry = bathymetryDataset.elevation.values
-        masked_bathymetry = np.ma.masked_where(bathymetry > 0, bathymetry)
+        bathymetry = abs(bathymetryDataset.elevation.values)
+        masked_bathymetry = np.ma.masked_where(bathymetry < 0, bathymetry)
         
         fig, ax = plt.subplots(figsize=(10, 8))
         
         # Plot bathymetry with ocean-focused colormap
         im = ax.pcolormesh(bathymetryDataset.lon, bathymetryDataset.lat, 
                           masked_bathymetry, shading='auto', 
-                          cmap='Blues_r')  # Blues_r gives darker blues for deeper water
+                          cmap='Blues', vmin=0)  # Blues_r gives darker blues for deeper water
+        im.set_clim(0, None)
+        im.cmap.set_bad('grey')
         
         # Plot krill locations
         scatter = ax.scatter(self.krillData.LONGITUDE, self.krillData.LATITUDE, 
-                           c=self.krillData.BATHYMETRY, cmap='Blues_r', 
+                           c=self.krillData.BATHYMETRY, cmap='Blues', 
                            s=20, edgecolor='black', linewidth=0.5)
         
         plt.colorbar(im, ax=ax, label='Ocean Depth (m)')
@@ -213,22 +221,25 @@ class DataFusion:
         self.logger.info("Plotting sst data...")
         
         # Create masked array for bathymetry where elevation <= 0
-        bathymetry = bathymetryDataset.elevation.values
-        masked_bathymetry = np.ma.masked_where(bathymetry > 0, bathymetry)
+        bathymetry = abs(bathymetryDataset.elevation.values)
+        masked_bathymetry = np.ma.masked_where(bathymetry < 0, bathymetry)
         
         fig, ax = plt.subplots(figsize=(10, 8))
         
         # Plot bathymetry with ocean-focused colormap
         im = ax.pcolormesh(bathymetryDataset.lon, bathymetryDataset.lat, 
                           masked_bathymetry, shading='auto', 
-                          cmap='Blues_r')  # Blues_r gives darker blues for deeper water
+                          cmap='Blues')  # Blues_r gives darker blues for deeper water
+
+        im.set_clim(0, None)
+        im.cmap.set_bad('grey')
         
         # Plot krill locations
         scatter = ax.scatter(self.krillData.LONGITUDE, self.krillData.LATITUDE, 
                            c=self.krillData.SST, cmap='hot', 
                            s=20, edgecolor='black', linewidth=0.5)
         
-        plt.colorbar(im, ax=ax, label='Ocean Depth (m)')
+        plt.colorbar(scatter, ax=ax, label='SST (°C)')
         ax.set_title('Ocean Bathymetry, sst and Krill Locations')
         ax.set_xlabel('Longitude')
         ax.set_ylabel('Latitude')

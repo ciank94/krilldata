@@ -5,6 +5,8 @@ import json
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.svm import SVR
 from joblib import dump
 
 
@@ -25,8 +27,13 @@ class KrillTrain:
     # Dictionary of available model classes
     models = {
         'rf': RandomForestRegressor,
-        'gbr': GradientBoostingRegressor
+        'gbr': GradientBoostingRegressor,
+        'dtr': DecisionTreeRegressor,
+        'svm': SVR
     }
+
+    featureColumns = ["LONGITUDE", "LATITUDE", "BATHYMETRY", "SST"]
+    targetColumn = "STANDARDISED_KRILL_UNDER_1M2"
 
     def __init__(self, inputPath, outputPath, modelType):
         #====Instance variables====
@@ -54,6 +61,7 @@ class KrillTrain:
         #====Preprocess====
         self.initLogger()
         self.readData()
+        self.describeData()
         self.scaleFeatures()
         self.handleNan()
         self.loadXy()
@@ -79,38 +87,40 @@ class KrillTrain:
         return
 
     def readData(self):
-        data = pd.read_csv(self.fusedDataPath)
-        self.fusedData = {"lon": data.LONGITUDE, 
-                        "lat": data.LATITUDE, 
-                        "depth": data.BATHYMETRY,
-                        "sst": data.SST,
-                        "krillDensity": data.STANDARDISED_KRILL_UNDER_1M2}
+        self.df = pd.read_csv(self.fusedDataPath)
+        self.df = self.df[KrillTrain.featureColumns + [KrillTrain.targetColumn]]
         self.logger.info(f"Read features from {self.fusedDataPath}")
-        self.logger.info(f"\n{self.fusedData}")
+        self.logger.info(f"\n{self.df}")
+        return
+
+    def describeData(self):
+        self.logger.info(f"Describing data...")
+        self.logger.info(f"Dataset:\n {self.df.describe()}")
+        corr_matrix = self.df.corr()
+        self.logger.info(f"Dataset correlation matrix:\n {corr_matrix}")
+        self.logger.info(f"Correlation with target column: {KrillTrain.targetColumn}: \n \
+            {corr_matrix[KrillTrain.targetColumn].sort_values(ascending=False)}")
         return
 
     def scaleFeatures(self):
         self.logger.info(f"Scaling features...")
-        feature_columns = [key for key in self.fusedData.keys() if key != 'krillDensity']
-        for key in feature_columns:
-            self.fusedData[key] = (self.fusedData[key] - self.fusedData[key].mean()) / self.fusedData[key].std()
-            self.logger.info(f"Feature {key} scaled, with mean {self.fusedData[key].mean()} and std {self.fusedData[key].std()}")
+        for col in KrillTrain.featureColumns:
+            self.df[col] = (self.df[col] - self.df[col].mean()) / self.df[col].std()
+            self.logger.info(f"Feature {col} scaled, with mean {self.df[col].mean()} and std {self.df[col].std()}")
         self.logger.info(f"Finished scaling features")
         return
 
     def handleNan(self):
-        # Convert dictionary of Series to DataFrame
-        self.df = pd.DataFrame(self.fusedData)
         self.logger.info(f"Handling NaN...")
-        self.logger.info(f"Before: {self.fusedData['krillDensity'].isna().sum()}")
+        self.logger.info(f"Before: {self.df.isna().sum()}")
         self.df = self.df.dropna()
         self.logger.info(f"Finished handling NaN")
         return
 
     def loadXy(self):
         self.logger.info(f"Loading Xy...") 
-        self.X = self.df[['lon', 'lat', 'depth', 'sst']]
-        self.y = self.df['krillDensity']
+        self.X = self.df[KrillTrain.featureColumns]
+        self.y = self.df[KrillTrain.targetColumn]
         self.logger.info(f"Finished loading Xy")
         return
 
