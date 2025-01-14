@@ -3,12 +3,14 @@ import pandas as pd
 import numpy as np
 import json
 from sklearn.metrics import mean_squared_error, r2_score
-from sklearn.model_selection import train_test_split, RandomizedSearchCV
+from sklearn.model_selection import train_test_split, RandomizedSearchCV, cross_val_score
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.svm import SVR
 from sklearn.linear_model import LinearRegression
+from sklearn.neural_network import MLPRegressor
 from joblib import dump
+import os
 
 
 class KrillTrain:
@@ -31,7 +33,8 @@ class KrillTrain:
         'gbr': GradientBoostingRegressor,
         'dtr': DecisionTreeRegressor,
         'svm': SVR,
-        'mlr': LinearRegression
+        'mlr': LinearRegression,
+        'nnr': MLPRegressor
     }
 
     featureColumns = ["LONGITUDE", "LATITUDE", "BATHYMETRY", "SST"]
@@ -52,17 +55,30 @@ class KrillTrain:
         self.y_test = None
         self.model = None
         self.modelType = modelType
+        self.model_filename = f"{self.inputPath}/{self.modelType}Model.joblib"
         self.modelParams = json.load(open("krilldata/model_params.json"))
-        breakpoint()
+        self.model_exists = False
 
         #====Class Methods====
-        self.preprocess()
-        self.training()
+        self.initLogger()
+        self.checkModelExists()
+        if not self.model_exists:
+            self.preprocess()
+            self.training()
+        return
+
+    def checkModelExists(self):
+        """Check if a trained model already exists and load it if found."""
+        if os.path.exists(self.model_filename):
+            self.logger.info(f"Model already exists at {self.model_filename}")
+            self.model_exists = True
+        else:
+            self.logger.info(f"No model found, training new model")
+            self.model_exists = False
         return
 
     def preprocess(self):
         #====Preprocess====
-        self.initLogger()
         self.readData()
         self.describeData()
         self.scaleFeatures()
@@ -73,7 +89,7 @@ class KrillTrain:
     def training(self):
         #====ML====
         self.trainTestSplit()
-        self.trainModel()
+        self.trainModelRandomSearch()
         self.modelMetrics()
         self.saveMetrics()
         self.saveModel()                        
@@ -134,43 +150,39 @@ class KrillTrain:
         self.logger.info(f"Finished train/test split with {len(self.X_train)} training samples and {len(self.X_test)} test samples")
         return
 
-    def randomSearch(self):
+    def trainModelRandomSearch(self):
         """Run random search over specified parameters for a specified model."""
-        kwargs = self.modelParams["Search"][self.modelType]
-        model_class = KrillTrain.models[self.modelType]
-        self.logger.info(f"Running random search for {self.modelType} model...")
-        search = RandomizedSearchCV(model_class(), kwargs, n_iter=10, cv=5, random_state=42)
-        search.fit(self.X_train, self.y_train)
-        self.logger.info(f"Best parameters: {search.best_params_}")
-        return
-
-    def trainModel(self, **kwargs):
-        """Train a specified machine learning model.
-            **kwargs: Additional arguments to pass to the model constructor. If not provided, 
-            default parameters from model_params.json will be used.
-        """
         self.logger.info(f"Training {self.modelType} model...")
         if self.modelType not in KrillTrain.models:
             raise ValueError(f"Model type '{self.modelType}' not supported. Choose from: \
             {list(KrillTrain.models.keys())}")
-            
-        # Use default parameters if none provided
-        if not kwargs:
-            kwargs = self.modelParams[self.modelType]
-            
-        # Initialize the selected model with parameters
+
+        # Run random search
+        kwargs = self.modelParams["Search"][self.modelType]
         model_class = KrillTrain.models[self.modelType]
-        self.model = model_class(**kwargs)
-        
-        # Train the model
+        self.logger.info(f"Running random search for {self.modelType} model...")
+        self.model = RandomizedSearchCV(model_class(), kwargs, n_iter=10, cv=5, random_state=42)
         self.model.fit(self.X_train, self.y_train)
-        self.logger.info(f"Finished {self.modelType} training")
+        self.logger.info(f"Best parameters: {self.model.best_params_}")
+
+        # Evaluate on the test set
+        test_score = self.model.score(self.X_test, self.y_test)
+        self.logger.info(f"Test set score: {test_score}")
+
+        # Optional: Cross-validation on the entire dataset with the best parameters
+        cv_scores = cross_val_score(self.model.best_estimator_, self.X, self.y, cv=5)
+        self.logger.info(f"Cross-validation scores on full dataset: {cv_scores}")
         return
     
     def modelMetrics(self):
-        """Calculate metrics for the trained model."""
+        """Calculate metrics for the trained model using the best estimator."""
         self.logger.info(f"Calculating metrics...")
-        y_pred = self.model.predict(self.X_test)
+        
+        # Get predictions using the best estimator
+        best_model = self.model.best_estimator_
+        y_pred = best_model.predict(self.X_test)
+        
+        # Calculate metrics
         r2 = r2_score(self.y_test, y_pred)
         self.logger.info(f"R^2: {r2}")
         mse = mean_squared_error(self.y_test, y_pred)
@@ -183,11 +195,13 @@ class KrillTrain:
         # Store metrics in a dictionary
         self.metrics = {
             'model_name': self.modelType,
+            'best_params': self.model.best_params_,
             'r2': r2,
             'mse': mse,
             'rmse': rmse,
             'normalised_rmse': normalised_rmse,
-            'timestamp': '2025-01-13T10:13:29+01:00'
+            'cv_results_mean': float(self.model.best_score_),
+            'timestamp': '2025-01-14T14:19:20+01:00'
         }
         self.logger.info(f"Stored dictionary of metrics: {self.metrics}")
         return
@@ -206,19 +220,17 @@ class KrillTrain:
 
     def saveModel(self):
         """Train model on full dataset and save it for later predictions.
-        The model is trained on all available data (not just training set) 
-        to maximize its predictive power for future use."""
-        self.logger.info(f"Training {self.modelType} model on full dataset...")
+        Uses the best estimator from random search and retrains it on the full dataset."""
+        self.logger.info(f"Training final {self.modelType} model on full dataset...")
         
-        # Initialize a new model with the same parameters
-        model_class = KrillTrain.models[self.modelType]
-        full_model = model_class(**self.model.get_params())
+        # Get the best estimator from random search (already configured with best parameters)
+        full_model = self.model.best_estimator_
         
-        # fit the full dataset
+        # Retrain on full dataset
         full_model.fit(self.X, self.y)
         
         # Save the model
-        model_filename = f"{self.inputPath}/{self.modelType}Model.joblib"
-        dump(full_model, model_filename)
-        self.logger.info(f"Saved model to {model_filename}")
+        dump(full_model, self.model_filename)
+        self.logger.info(f"Saved model to {self.model_filename}")
+        self.logger.info(f"Model parameters: {full_model.get_params()}")
         return

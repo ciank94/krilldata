@@ -29,6 +29,7 @@ class ReadKrillBase:
     }
     
     krillDistributionsFigName = "krillDistributions.png"
+    krillFusedDataFilename = "krillFusedData.csv"
     logging.basicConfig(level=logging.INFO) # set logging level for class
     
     def __init__(self, inputPath, outputPath):
@@ -37,13 +38,16 @@ class ReadKrillBase:
         self.file = f"{inputPath}/krillbase.csv"
         self.fileData = None
         self.fileDataSubset = None
-        self.processData()
+        self.initLogger() 
+        if not os.path.exists(os.path.join(self.inputPath, ReadKrillBase.krillFusedDataFilename)):
+            self.processData()
+        else:
+            self.logger.info(f"Fused krillbase file already exists, no need to process data")
         return
 
     def processData(self):
         os.makedirs(self.inputPath, exist_ok=True)
-        os.makedirs(self.outputPath, exist_ok=True)
-        self.initLogger()  
+        os.makedirs(self.outputPath, exist_ok=True) 
         self.variableSubset()
         self.dateSubset()
         self.transformDensities()
