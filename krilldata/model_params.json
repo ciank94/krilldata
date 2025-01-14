@@ -1,5 +1,5 @@
 {
-    "rf": {
+    "rfr": {
         "n_estimators": 100,
         "max_depth": null,
         "min_samples_split": 2,
@@ -11,5 +11,52 @@
         "learning_rate": 0.1,
         "max_depth": 3,
         "subsample": 1.0
+    },
+    "dtr": {
+        "max_depth": null,
+        "min_samples_split": 2,
+        "min_samples_leaf": 1,
+        "criterion": "squared_error"
+    },
+    "svm": {
+        "kernel": "rbf",
+        "C": 1.0,
+        "epsilon": 0.1,
+        "gamma": "scale"
+    },
+    "mlr": {
+        "fit_intercept": true,
+        "copy_X": true
+    },
+    "Search": {
+        "rfr": {
+            "n_estimators": [100, 200, 300, 500],
+            "max_depth": [null, 10, 20, 30, 50],
+            "min_samples_split": [2, 5, 10],
+            "min_samples_leaf": [1, 2, 4],
+            "max_features": ["sqrt", "log2", null]
+        },
+        "gbr": {
+            "n_estimators": [100, 200, 300, 500],
+            "learning_rate": [0.01, 0.05, 0.1, 0.3],
+            "max_depth": [3, 5, 7, 9],
+            "subsample": [0.8, 0.9, 1.0]
+        },
+        "dtr": {
+            "max_depth": [null, 10, 20, 30, 50],
+            "min_samples_split": [2, 5, 10],
+            "min_samples_leaf": [1, 2, 4],
+            "criterion": ["squared_error", "friedman_mse", "absolute_error", "poisson"]
+        },
+        "svm": {
+            "kernel": ["linear", "rbf", "poly"],
+            "C": [0.1, 1.0, 10.0, 100.0],
+            "epsilon": [0.1, 0.2, 0.3],
+            "gamma": ["scale", "auto"]
+        },
+        "mlr": {
+            "fit_intercept": [true, false],
+            "copy_X": [true, false]
+        }
     }
 }

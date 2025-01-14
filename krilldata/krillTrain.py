@@ -3,10 +3,11 @@ import pandas as pd
 import numpy as np
 import json
 from sklearn.metrics import mean_squared_error, r2_score
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, RandomizedSearchCV
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.svm import SVR
+from sklearn.linear_model import LinearRegression
 from joblib import dump
 
 
@@ -26,10 +27,11 @@ class KrillTrain:
 
     # Dictionary of available model classes
     models = {
-        'rf': RandomForestRegressor,
+        'rfr': RandomForestRegressor,
         'gbr': GradientBoostingRegressor,
         'dtr': DecisionTreeRegressor,
-        'svm': SVR
+        'svm': SVR,
+        'mlr': LinearRegression
     }
 
     featureColumns = ["LONGITUDE", "LATITUDE", "BATHYMETRY", "SST"]
@@ -51,6 +53,7 @@ class KrillTrain:
         self.model = None
         self.modelType = modelType
         self.modelParams = json.load(open("krilldata/model_params.json"))
+        breakpoint()
 
         #====Class Methods====
         self.preprocess()
@@ -129,6 +132,16 @@ class KrillTrain:
         self.logger.info(f"Splitting train/test...")
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.X, self.y, test_size=0.2, random_state=42)
         self.logger.info(f"Finished train/test split with {len(self.X_train)} training samples and {len(self.X_test)} test samples")
+        return
+
+    def randomSearch(self):
+        """Run random search over specified parameters for a specified model."""
+        kwargs = self.modelParams["Search"][self.modelType]
+        model_class = KrillTrain.models[self.modelType]
+        self.logger.info(f"Running random search for {self.modelType} model...")
+        search = RandomizedSearchCV(model_class(), kwargs, n_iter=10, cv=5, random_state=42)
+        search.fit(self.X_train, self.y_train)
+        self.logger.info(f"Best parameters: {search.best_params_}")
         return
 
     def trainModel(self, **kwargs):
