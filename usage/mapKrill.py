@@ -5,7 +5,11 @@ from krilldata import (
 #===============IO Paths & model parameters===============
 inputPath = "input/"
 outputPath = "output/"
-modelType = "gbr"
+modelType = "svm"
 
 # ================KrillPredict class===============
-KrillPredict(inputPath, outputPath, modelType) # read trained model and make predictions
+# Peninsula prediction
+#KrillPredict(inputPath, outputPath, modelType, scenario='peninsula')
+
+# South Georgia prediction
+KrillPredict(inputPath, outputPath, modelType, scenario='southGeorgia')

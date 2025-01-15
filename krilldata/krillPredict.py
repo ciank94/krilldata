@@ -18,11 +18,12 @@ class KrillPredict:
     sstFilename = "sst.nc"
     fusedFilename = "krillFusedData.csv"
 
-    def __init__(self, inputPath, outputPath, modelType):
+    def __init__(self, inputPath, outputPath, modelType, scenario='southGeorgia'):
         # Instance variables
         self.inputPath = inputPath
         self.outputPath = outputPath
         self.modelType = modelType
+        self.scenario = scenario
         self.model = load(f"{inputPath}/{self.modelType}Model.joblib")
         self.mapParams = self.loadParameters()
 
@@ -41,10 +42,10 @@ class KrillPredict:
         return
 
     def loadParameters(self):
-        #todo: load features
-        with open(f"krilldata/map_params.json", "r") as f:
-            map_params = json.load(f)
-        return map_params
+        """Load map parameters from JSON file"""
+        with open("krilldata/map_params.json", "r") as f:
+            params = json.load(f)
+        return params[self.scenario]
 
     def loadFeatures(self):
         # Get spatial and temporal extents
@@ -81,12 +82,20 @@ class KrillPredict:
             # Base index for this time slice
             base_idx = t_idx * n_points
             
-            # Fill in coordinates
+            # Create mask for Weddell Sea region
+            weddell_mask = ~(((-75 <= lats_flat) & (lats_flat <= -64)) & 
+                           ((-60 <= lons_flat) & (lons_flat <= -20)))
+            
+            # Fill in coordinates for non-Weddell Sea points
             X[base_idx:base_idx + n_points, 0] = lons_flat
             X[base_idx:base_idx + n_points, 1] = lats_flat
             
             # Find nearest bathymetry and SST values
             for i, (lat, lon) in enumerate(zip(lats_flat, lons_flat)):
+                if not weddell_mask[i]:
+                    X[base_idx + i, 2] = np.nan
+                    continue
+                    
                 # Bathymetry (constant across time)
                 lat_idx = np.abs(lat_bath - lat).argmin()
                 lon_idx = np.abs(lon_bath - lon).argmin()
@@ -98,14 +107,15 @@ class KrillPredict:
                 init_val = sst_ds["analysed_sst"][t_sst_idx, lat_idx, lon_idx].data
                 X[base_idx + i, 3] = init_val - 273.15
 
+        
         # Store valid indices and grid shape for plotting
-        self.valid_mask = ~np.isnan(X).any(axis=1)
         self.grid_shape = lon_grid.shape
         self.n_points = n_points
         
         # Convert to DataFrame with feature names matching training data
+        self.valid_mask = ~np.isnan(X).any(axis=1)
         X_valid = X[self.valid_mask]
-        X_df = pd.DataFrame(X_valid, columns=['lon', 'lat', 'depth', 'sst'])
+        X_df = pd.DataFrame(X_valid, columns=['LONGITUDE', 'LATITUDE', 'BATHYMETRY', 'SST'])
         
         # Scale features to match training data
         for col in X_df.columns:
@@ -154,45 +164,53 @@ class KrillPredict:
         return y
 
     def plotPredictions(self, time_idx=0, save_path=None):
+        """Plot predictions on a map"""
         import matplotlib.pyplot as plt
         import cartopy.crs as ccrs
         import cartopy.feature as cfeature
+        import cmocean
         
         # Get spatial extent
         lon_grid, lat_grid = self.spatialExtent()
         
-        # Reshape predictions for the specific time index
+        # Get predictions for this time slice
         y_time = self.y[time_idx * self.n_points:(time_idx + 1) * self.n_points]
+        
+        # Transform from log10 back to original space
+        y_time = np.power(10, y_time)
+        
+        # Reshape to grid
         pred_grid = y_time.reshape(self.grid_shape)
         
         # Create figure with map projection
-        plt.figure(figsize=(12, 8))
+        fig = plt.figure(figsize=(12, 8))
         ax = plt.axes(projection=ccrs.PlateCarree())
+        ax.gridlines(draw_labels=True)
+        ax.coastlines()
         
-        # Add coastlines and features
-        ax.add_feature(cfeature.COASTLINE)
-        ax.add_feature(cfeature.LAND, facecolor='lightgray')
+        # Create levels for contour plot
+        levels = np.linspace(0, 2, 40)
         
-        # Plot predictions with masked invalid values
-        mesh = ax.pcolormesh(lon_grid, lat_grid, pred_grid,
+        # Plot predictions with contours
+        mesh = ax.contourf(lon_grid, lat_grid, pred_grid,
                            transform=ccrs.PlateCarree(),
-                           cmap='viridis')
-        plt.colorbar(mesh, label='Krill Prediction')
+                           cmap='Reds', levels=levels, extend='max')
+        plt.colorbar(mesh, label='Krill Density', shrink=0.75)
+        
+        # Add land on top of contours
+        ax.add_feature(cfeature.LAND, facecolor='lightgray', zorder=100)
         
         # Set map extent with some padding
         ax.set_extent([
-            self.mapParams['lon_min'] - 1,
-            self.mapParams['lon_max'] + 1,
-            self.mapParams['lat_min'] - 1,
-            self.mapParams['lat_max'] + 1
+            self.mapParams['lon_min'] - 0.25,
+            self.mapParams['lon_max'] + 0.25,
+            self.mapParams['lat_min'] - 0.25,
+            self.mapParams['lat_max'] + 0.25
         ], crs=ccrs.PlateCarree())
-        
-        # Add gridlines
-        ax.gridlines(draw_labels=True)
         
         # Add title with time information
         time_range = self.temporalExtent()
-        plt.title(f'Krill Prediction for {time_range[time_idx].strftime("%Y-%m-%d")}')
+        plt.title(f'Krill Prediction for {time_range[time_idx].strftime("%Y-%m-%d")} ({self.scenario})')
         
         if save_path:
             plt.savefig(save_path, bbox_inches='tight', dpi=300)
