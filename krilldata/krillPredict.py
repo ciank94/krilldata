@@ -63,7 +63,7 @@ class KrillPredict:
         # Create feature matrix
         n_points = len(lon_grid.flatten())
         n_times = len(time_range)
-        X = np.zeros((n_points * n_times, 8))  # lon, lat, bathymetry, sst, ssh, ugeo, vgeo, net_vel
+        X = np.zeros((n_points * n_times, 9))  # year, lon, lat, bathymetry, sst, ssh, ugeo, vgeo, net_vel
         
         # Flatten spatial grids for vectorized operations
         lons_flat = lon_grid.flatten()
@@ -100,26 +100,28 @@ class KrillPredict:
             weddell_mask = ~(((-75 <= lats_flat) & (lats_flat <= -64)) & 
                            ((-60 <= lons_flat) & (lons_flat <= -20)))
             
+            
             # Fill in coordinates for non-Weddell Sea points
-            X[base_idx:base_idx + n_points, 0] = lons_flat
-            X[base_idx:base_idx + n_points, 1] = lats_flat
+            X[base_idx:base_idx + n_points, 0] = np.full(n_points, t.year)
+            X[base_idx:base_idx + n_points, 1] = lons_flat
+            X[base_idx:base_idx + n_points, 2] = lats_flat
             
             # Find nearest bathymetry and SST values
             for i, (lat, lon) in enumerate(zip(lats_flat, lons_flat)):
                 if not weddell_mask[i]:
-                    X[base_idx + i, 2] = np.nan
+                    X[base_idx + i, 3] = np.nan
                     continue
-                    
+
                 # Bathymetry (constant across time)
                 lat_idx = np.abs(lat_bath - lat).argmin()
                 lon_idx = np.abs(lon_bath - lon).argmin()
-                X[base_idx + i, 2] = abs(bathymetry_ds["elevation"][lat_idx, lon_idx].data)
+                X[base_idx + i, 3] = abs(bathymetry_ds["elevation"][lat_idx, lon_idx].data)
                 
                 # SST values
                 lat_idx = np.abs(lat_sst - lat).argmin()
                 lon_idx = np.abs(lon_sst - lon).argmin()
                 init_val = sst_ds["analysed_sst"][t_sst_idx, lat_idx, lon_idx].data
-                X[base_idx + i, 3] = init_val - 273.15
+                X[base_idx + i, 4] = init_val - 273.15
 
                 #SSH values
                 lat_idx = np.abs(lat_ssh - lat).argmin()
@@ -129,10 +131,10 @@ class KrillPredict:
                 vgeo_val = ssh_ds["vgos"][t_ssh_idx, lat_idx, lon_idx].data
                 net_vel_val = np.sqrt(ugeo_val**2 + vgeo_val**2)
 
-                X[base_idx + i, 4] = ssh_val
-                X[base_idx + i, 5] = ugeo_val
-                X[base_idx + i, 6] = vgeo_val
-                X[base_idx + i, 7] = net_vel_val
+                X[base_idx + i, 5] = ssh_val
+                X[base_idx + i, 6] = ugeo_val
+                X[base_idx + i, 7] = vgeo_val
+                X[base_idx + i, 8] = net_vel_val
 
         self.logger.info(f"Finished creating feature matrix")
         
@@ -143,13 +145,12 @@ class KrillPredict:
         # Convert to DataFrame with feature names matching training data
         self.valid_mask = ~np.isnan(X).any(axis=1)
         X_valid = X[self.valid_mask]
-        X_df = pd.DataFrame(X_valid, columns=['LONGITUDE', 'LATITUDE', 'BATHYMETRY', 'SST', 'SSH', 'UGO', 'VGO', 'NET_VEL'])
+        X_df = pd.DataFrame(X_valid, columns=['YEAR', 'LONGITUDE', 'LATITUDE', 'BATHYMETRY', 'SST', 'SSH', 'UGO', 'VGO', 'NET_VEL'])
         
         # Scale features to match training data
         self.logger.info(f"Scaling features...")
         for col in X_df.columns:
-            X_df[col] = (X_df[col] - X_df[col].mean()) / X_df[col].std()
-        
+            X_df[col] = (X_df[col] - X_df[col].mean()) / (X_df[col].std() + 0.00001)
         return X_df
 
     def spatialExtent(self):
@@ -218,7 +219,8 @@ class KrillPredict:
         ax.coastlines()
         
         # Create levels for contour plot
-        levels = np.linspace(0, 2, 40)
+        #levels = np.linspace(0,np.nanmean(y_time)*1.5, 40)
+        levels = np.linspace(0, 2.5, 40)
         
         # Plot bathymetry first
         bathymetry_ds = xr.open_dataset(f"{self.inputPath}/{KrillPredict.bathymetryFilename}")

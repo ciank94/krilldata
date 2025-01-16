@@ -51,6 +51,7 @@ class DataFusion:
         if os.path.exists(os.path.join(self.inputPath, DataFusion.fusedFilename)):
             self.logger.info(f"File already exists: {DataFusion.fusedFilename}")
         else:
+            self.fuseYear()
             self.fuseBathymetry()
             self.fuseSST()
             self.fuseSSH()
@@ -63,6 +64,12 @@ class DataFusion:
 
         self.krillData = pd.read_csv(os.path.join(self.inputPath, DataFusion.fusedFilename))
         self.checkPlot()
+        return
+
+    def fuseYear(self):
+        self.logger.info(f"Adding year column...")
+        self.krillData["YEAR"] = self.krillData["DATE"].dt.year
+        self.logger.info(f"Finished adding year column")
         return
 
     def fuseBathymetry(self):

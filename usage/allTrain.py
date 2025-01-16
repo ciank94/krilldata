@@ -7,7 +7,7 @@ from krilldata import (
 #===============IO Paths & model parameters===============
 inputPath = "input/"
 outputPath = "output/"
-modelTypes = ["svm", "rfr", "gbr", "dtr", "mlr", "nnr"]
+modelTypes = ["svm", "rfr", "gbr", "dtr", "mlr"]
 
 for modelType in modelTypes:
     # ================ReadKrillBase class===============

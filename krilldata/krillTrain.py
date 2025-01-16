@@ -40,7 +40,7 @@ class KrillTrain:
         'nnr': MLPRegressor
     }
 
-    featureColumns = ["LONGITUDE", "LATITUDE", "BATHYMETRY", "SST", "SSH", "UGO", "VGO", "NET_VEL"]
+    featureColumns = ["YEAR", "LONGITUDE", "LATITUDE", "BATHYMETRY", "SST", "SSH", "UGO", "VGO", "NET_VEL"]
     targetColumn = "STANDARDISED_KRILL_UNDER_1M2"
 
     def __init__(self, inputPath, outputPath, modelType):
@@ -133,7 +133,7 @@ class KrillTrain:
     def scaleFeatures(self):
         self.logger.info(f"Scaling features...")
         for col in KrillTrain.featureColumns:
-            self.df[col] = (self.df[col] - self.df[col].mean()) / self.df[col].std()
+            self.df[col] = (self.df[col] - self.df[col].mean()) / (self.df[col].std() + 0.00001)
             self.logger.info(f"Feature {col} scaled, with mean {self.df[col].mean()} and std {self.df[col].std()}")
         self.logger.info(f"Finished scaling features")
         return
