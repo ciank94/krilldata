@@ -5,7 +5,7 @@ from krilldata import (
 #===============IO Paths & model parameters===============
 inputPath = "input/"
 outputPath = "output/"
-modelType = "svm"
+modelType = "gbr"
 
 # ================KrillPredict class===============
 # Peninsula prediction

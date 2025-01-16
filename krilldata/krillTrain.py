@@ -11,6 +11,8 @@ from sklearn.linear_model import LinearRegression
 from sklearn.neural_network import MLPRegressor
 from joblib import dump
 import os
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 class KrillTrain:
@@ -26,6 +28,7 @@ class KrillTrain:
         predict\n"
 
     fusedDataFilename = "krillFusedData.csv"
+    correlationSaveFig = "correlationMatrix.png"
 
     # Dictionary of available model classes
     models = {
@@ -37,7 +40,7 @@ class KrillTrain:
         'nnr': MLPRegressor
     }
 
-    featureColumns = ["LONGITUDE", "LATITUDE", "BATHYMETRY", "SST"]
+    featureColumns = ["LONGITUDE", "LATITUDE", "BATHYMETRY", "SST", "SSH", "UGO", "VGO", "NET_VEL"]
     targetColumn = "STANDARDISED_KRILL_UNDER_1M2"
 
     def __init__(self, inputPath, outputPath, modelType):
@@ -87,12 +90,12 @@ class KrillTrain:
         return
 
     def training(self):
-        #====ML====
+        """Execute the training pipeline in the correct sequence."""
         self.trainTestSplit()
-        self.trainModelRandomSearch()
-        self.modelMetrics()
-        self.saveMetrics()
-        self.saveModel()                        
+        self.trainModelRandomSearch()  # This includes model fitting
+        self.modelMetrics()           # Calculate performance metrics
+        self.saveMetrics()            # Save metrics to file
+        self.saveModel()              # Save the final model
         return
 
     #====================Preprocess methods====================
@@ -115,10 +118,16 @@ class KrillTrain:
     def describeData(self):
         self.logger.info(f"Describing data...")
         self.logger.info(f"Dataset:\n {self.df.describe()}")
+        
+        # Create correlation matrix plot
+        # Save correlation plot
         corr_matrix = self.df.corr()
-        self.logger.info(f"Dataset correlation matrix:\n {corr_matrix}")
-        self.logger.info(f"Correlation with target column: {KrillTrain.targetColumn}: \n \
-            {corr_matrix[KrillTrain.targetColumn].sort_values(ascending=False)}")
+        if os.path.exists(f"{self.outputPath}/{KrillTrain.correlationSaveFig}"):
+            self.logger.info(f"File exists: {KrillTrain.correlationSaveFig}")
+        else:
+            self.logger.info(f"File does not exist: {KrillTrain.correlationSaveFig}")
+            self.logger.info(f"File will be created: {KrillTrain.correlationSaveFig}")
+            self.plotCorrelationMatrix(corr_matrix)
         return
 
     def scaleFeatures(self):
@@ -233,4 +242,23 @@ class KrillTrain:
         dump(full_model, self.model_filename)
         self.logger.info(f"Saved model to {self.model_filename}")
         self.logger.info(f"Model parameters: {full_model.get_params()}")
+        return
+
+    def plotCorrelationMatrix(self, corr_matrix):
+        """Plot correlation matrix as a heatmap."""
+        plt.figure(figsize=(12, 10))
+        plt.title('Feature Correlation Matrix')
+        plt.xlabel('Features')
+        plt.ylabel('Features')
+        
+        sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0, fmt='.2f')
+        
+        plt.tight_layout()
+        plt.savefig(f"{self.outputPath}/{KrillTrain.correlationSaveFig}", dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        self.logger.info(f"Saved correlation matrix plot to: {KrillTrain.correlationSaveFig}")
+        self.logger.info(f"Dataset correlation matrix:\n {corr_matrix}")
+        self.logger.info(f"Correlation with target column: {KrillTrain.targetColumn}: \n \
+            {corr_matrix[KrillTrain.targetColumn].sort_values(ascending=False)}")
         return

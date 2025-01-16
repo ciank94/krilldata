@@ -7,7 +7,7 @@ from krilldata import (
 #===============IO Paths & model parameters===============
 inputPath = "input/"
 outputPath = "output/"
-modelType = "svm"
+modelType = "gbr"
 
 # ================ReadKrillBase class===============
 kb = ReadKrillBase(inputPath, outputPath) # subset krillbase data by key variables, years, lon & lat ranges

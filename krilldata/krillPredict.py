@@ -16,6 +16,7 @@ class KrillPredict:
     # filenames:
     bathymetryFilename = "bathymetry.nc"
     sstFilename = "sst.nc"
+    sshFilename = "ssh.nc"
     fusedFilename = "krillFusedData.csv"
 
     def __init__(self, inputPath, outputPath, modelType, scenario='southGeorgia'):
@@ -38,7 +39,9 @@ class KrillPredict:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.info(f"================={self.__class__.__name__}=====================")
         self.logger.info(f"{KrillPredict.loggerDescription}")
-        #self.logger.info(f"Loaded parameters for {self.modelType}: {self.modelParams[self.modelType]}")
+        self.logger.info(f"Loaded parameters for: {self.modelType}")
+        self.logger.info(f"Loaded scenario parameters for: {self.scenario}")
+        self.logger.info(f"Loaded model: {self.model}")
         return
 
     def loadParameters(self):
@@ -53,13 +56,14 @@ class KrillPredict:
         time_range = self.temporalExtent()
         
         # Load bathymetry and SST data
-        bathymetry_ds = xr.open_dataset(f"{self.inputPath}/{self.bathymetryFilename}")
-        sst_ds = xr.open_dataset(f"{self.inputPath}/{self.sstFilename}")
+        bathymetry_ds = xr.open_dataset(f"{self.inputPath}/{KrillPredict.bathymetryFilename}")
+        sst_ds = xr.open_dataset(f"{self.inputPath}/{KrillPredict.sstFilename}")
+        ssh_ds = xr.open_dataset(f"{self.inputPath}/{KrillPredict.sshFilename}")
         
         # Create feature matrix
         n_points = len(lon_grid.flatten())
         n_times = len(time_range)
-        X = np.zeros((n_points * n_times, 4))  # lon, lat, bathymetry, sst
+        X = np.zeros((n_points * n_times, 8))  # lon, lat, bathymetry, sst, ssh, ugeo, vgeo, net_vel
         
         # Flatten spatial grids for vectorized operations
         lons_flat = lon_grid.flatten()
@@ -73,11 +77,21 @@ class KrillPredict:
         lat_sst = sst_ds["latitude"].data
         lon_sst = sst_ds["longitude"].data
         time_sst = sst_ds["time"].data
+
+        # Find nearest SSH points
+        lat_ssh = ssh_ds["latitude"].data
+        lon_ssh = ssh_ds["longitude"].data
+        time_ssh = ssh_ds["time"].data
+
         
         # For each time point
+        self.logger.info(f"Creating feature matrix")
         for t_idx, t in enumerate(time_range):
             # Find nearest SST time index
             t_sst_idx = np.abs(time_sst - np.datetime64(t)).argmin()
+
+            # Find nearest SSH time index
+            t_ssh_idx = np.abs(time_ssh - np.datetime64(t)).argmin()
             
             # Base index for this time slice
             base_idx = t_idx * n_points
@@ -107,6 +121,20 @@ class KrillPredict:
                 init_val = sst_ds["analysed_sst"][t_sst_idx, lat_idx, lon_idx].data
                 X[base_idx + i, 3] = init_val - 273.15
 
+                #SSH values
+                lat_idx = np.abs(lat_ssh - lat).argmin()
+                lon_idx = np.abs(lon_ssh - lon).argmin()
+                ssh_val = ssh_ds["adt"][t_ssh_idx, lat_idx, lon_idx].data
+                ugeo_val = ssh_ds["ugos"][t_ssh_idx, lat_idx, lon_idx].data
+                vgeo_val = ssh_ds["vgos"][t_ssh_idx, lat_idx, lon_idx].data
+                net_vel_val = np.sqrt(ugeo_val**2 + vgeo_val**2)
+
+                X[base_idx + i, 4] = ssh_val
+                X[base_idx + i, 5] = ugeo_val
+                X[base_idx + i, 6] = vgeo_val
+                X[base_idx + i, 7] = net_vel_val
+
+        self.logger.info(f"Finished creating feature matrix")
         
         # Store valid indices and grid shape for plotting
         self.grid_shape = lon_grid.shape
@@ -115,9 +143,10 @@ class KrillPredict:
         # Convert to DataFrame with feature names matching training data
         self.valid_mask = ~np.isnan(X).any(axis=1)
         X_valid = X[self.valid_mask]
-        X_df = pd.DataFrame(X_valid, columns=['LONGITUDE', 'LATITUDE', 'BATHYMETRY', 'SST'])
+        X_df = pd.DataFrame(X_valid, columns=['LONGITUDE', 'LATITUDE', 'BATHYMETRY', 'SST', 'SSH', 'UGO', 'VGO', 'NET_VEL'])
         
         # Scale features to match training data
+        self.logger.info(f"Scaling features...")
         for col in X_df.columns:
             X_df[col] = (X_df[col] - X_df[col].mean()) / X_df[col].std()
         
@@ -191,10 +220,33 @@ class KrillPredict:
         # Create levels for contour plot
         levels = np.linspace(0, 2, 40)
         
-        # Plot predictions with contours
-        mesh = ax.contourf(lon_grid, lat_grid, pred_grid,
+        # Plot bathymetry first
+        bathymetry_ds = xr.open_dataset(f"{self.inputPath}/{KrillPredict.bathymetryFilename}")
+        
+        # Subset bathymetry data to match prediction grid extent
+        bath_subset = bathymetry_ds.sel(
+            lon=slice(lon_grid.min(), lon_grid.max()),
+            lat=slice(lat_grid.min(), lat_grid.max())
+        )
+        
+        bath_data = abs(bath_subset["elevation"].data)
+        lon_bath = bath_subset["lon"].data
+        lat_bath = bath_subset["lat"].data
+        
+        # Create proper meshgrid for bathymetry
+        lon_bath_mesh, lat_bath_mesh = np.meshgrid(lon_bath, lat_bath)
+        
+        # Plot bathymetry
+        bath_levels = np.linspace(bath_data.min(), bath_data.max(), 10)
+        bath_mesh = ax.contour(lon_bath_mesh, lat_bath_mesh, bath_data,
+                                transform=ccrs.PlateCarree(), colors='gray',
+                                alpha=0.42, levels=bath_levels, linewidths=0.65)
+        #plt.colorbar(bath_mesh, label='Depth (m)', shrink=0.75)
+        
+        # Plot predictions with pcolormesh
+        mesh = ax.pcolormesh(lon_grid, lat_grid, pred_grid,
                            transform=ccrs.PlateCarree(),
-                           cmap='Reds', levels=levels, extend='max')
+                           cmap='Reds', vmin=min(levels), vmax=max(levels))
         plt.colorbar(mesh, label='Krill Density', shrink=0.75)
         
         # Add land on top of contours
