@@ -16,10 +16,6 @@ class DataFusion:
         preprocesses SSH data from Copernicus\n\
         fuses data\n"
 
-    # filenames:
-    bathymetryFilename = "bathymetry.nc"
-    sstFilename = "sst.nc"
-    sshFilename = "ssh.nc"
     fusedFilename = "krillFusedData.csv"
     bathymetrySaveFig = "bathymetryVerification.png"
     sstSaveFig = "sstVerification.png"
@@ -32,9 +28,9 @@ class DataFusion:
         self.krillData = krillData
         self.inputPath = inputPath
         self.outputPath = outputPath
-        self.bathymetryPath = f"{inputPath}/{DataFusion.bathymetryFilename}"
-        self.sstPath = f"{inputPath}/{DataFusion.sstFilename}"
-        self.sshPath = f"{inputPath}/{DataFusion.sshFilename}"
+        self.bathymetryPath = f"{inputPath}/bathymetry.nc"
+        self.sstPath = f"{inputPath}/sst.nc"
+        self.sshPath = f"{inputPath}/ssh.nc"
 
         # Main methods
         self.initLogger()
@@ -88,13 +84,12 @@ class DataFusion:
         return
 
     def fuseSST(self):
-        self.logger.info(f"Downloading SST data...")
+        self.logger.info(f"Checking for SST data...")
         if not os.path.exists(self.sstPath):
-            self.logger.info(f"File does not exist: {DataFusion.sstFilename}")
-            self.logger.info(f"LARGE FILE WILL BE DOWNLOADED: {DataFusion.sstFilename}")
-            DownloadSST()
+            self.logger.warning(f"SST data does not exist, must be downloaded: {self.sstPath}")
+            raise FileNotFoundError(f"File does not exist: {self.sstPath}")
         else:
-            self.logger.info(f"File already exists: {DataFusion.sstFilename}")
+            self.logger.info(f"File already exists: {self.sstPath}")
 
         sstDataset = xr.open_dataset(self.sstPath)
         lonSST = sstDataset["longitude"].data
@@ -164,12 +159,10 @@ class DataFusion:
 
     def fuseSSH(self):
         if not os.path.exists(self.sshPath):
-            self.logger.info(f"File does not exist: {DataFusion.sshFilename}")
-            self.logger.info(f"LARGE FILE WILL BE DOWNLOADED: {DataFusion.sshFilename}")
-            DownloadSSH()
+           self.logger.warning(f"SSH data does not exist, must be downloaded: {self.sshPath}")
+           raise FileNotFoundError(f"File does not exist: {self.sshPath}")
         else:
-            self.logger.info(f"File already exists: {DataFusion.sshFilename}")
-        
+            self.logger.info(f"File already exists: {self.sshPath}")
         sshDataset = xr.open_dataset(self.sshPath)
         lonSSH = sshDataset["longitude"].data
         latSSH = sshDataset["latitude"].data
@@ -505,120 +498,5 @@ class DataFusion:
         self.logger.info(f"Saved fused distributions plot to: {plotName}")
         return
 
-class DownloadSST:
-    defaultRequest = {
-            'dataID': 'METOFFICE-GLO-SST-L4-REP-OBS-SST',
-            'configurePath': 'C:/Users/ciank/.copernicusmarine/.copernicusmarine-credentials',
-            'outputFilename': 'input/sst.nc',
-            'startDate': "1981-10-01T00:00:00",
-            'endDate': "2016-10-01T00:00:00",
-            'lonBounds': [-70, -31],
-            'latBounds': [-73, -50],
-            'variables': ['analysed_sst']
-        }
 
-    def __init__(self):
-        self.dataID = DownloadSST.defaultRequest['dataID']
-        self.configurePath = DownloadSST.defaultRequest['configurePath']
-        self.outputFilename = DownloadSST.defaultRequest['outputFilename']
-        self.startDate = DownloadSST.defaultRequest['startDate']
-        self.endDate = DownloadSST.defaultRequest['endDate']
-        self.lonBounds = DownloadSST.defaultRequest['lonBounds']
-        self.latBounds = DownloadSST.defaultRequest['latBounds']
-        self.variables = DownloadSST.defaultRequest['variables']
 
-        # log request details and process request;
-        self.initLogger()
-        self.downloadSST()
-        return
-
-    def initLogger(self):
-        self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.info(f"================={self.__class__.__name__}=====================")
-        self.logger.info(f"Initializing {self.__class__.__name__}")
-        self.logger.info(f"=================Request parameters=====================")
-        self.logger.info(f"DataID: {self.dataID}")    
-        self.logger.info(f"Configure path: {self.configurePath}")
-        self.logger.info(f"Output path: {self.outputFilename}")
-        self.logger.info(f"Start date: {self.startDate}")
-        self.logger.info(f"End date: {self.endDate}")
-        self.logger.info(f"Longitude bounds: {self.lonBounds}")
-        self.logger.info(f"Latitude bounds: {self.latBounds}")
-        self.logger.info(f"Variables: {self.variables}")   
-        return
-
-    def downloadSST(self):
-        self.logger.info(f"Downloading SST data...")
-        cop.subset(
-            dataset_id=self.dataID,
-            variables=self.variables,
-            start_datetime=self.startDate,
-            end_datetime=self.endDate,
-            minimum_longitude=self.lonBounds[0],
-            maximum_longitude=self.lonBounds[1],
-            minimum_latitude=self.latBounds[0],
-            maximum_latitude=self.latBounds[1],
-            output_filename=self.outputFilename,
-            credentials_file=self.configurePath,
-            force_download=True,
-        )
-        return
-
-class DownloadSSH:
-    defaultRequest = {
-            'dataID': 'cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D',
-            'configurePath': 'C:/Users/ciank/.copernicusmarine/.copernicusmarine-credentials',
-            'outputFilename': 'input/ssh.nc',
-            'startDate': "1992-01-01T00:00:00",
-            'endDate': "2016-12-31T00:00:00",
-            'lonBounds': [-70, -31],
-            'latBounds': [-73, -50],
-            'variables': ['adt', 'ugos', 'vgos']
-        }
-
-    def __init__(self):
-        self.dataID = DownloadSSH.defaultRequest['dataID']
-        self.configurePath = DownloadSSH.defaultRequest['configurePath']
-        self.outputFilename = DownloadSSH.defaultRequest['outputFilename']
-        self.startDate = DownloadSSH.defaultRequest['startDate']
-        self.endDate = DownloadSSH.defaultRequest['endDate']
-        self.lonBounds = DownloadSSH.defaultRequest['lonBounds']
-        self.latBounds = DownloadSSH.defaultRequest['latBounds']
-        self.variables = DownloadSSH.defaultRequest['variables']
-
-        # log request details and process request;
-        self.initLogger()
-        self.downloadSSH()
-        return
-
-    def initLogger(self):
-        self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.info(f"================={self.__class__.__name__}=====================")
-        self.logger.info(f"Initializing {self.__class__.__name__}")
-        self.logger.info(f"=================Request parameters=====================")
-        self.logger.info(f"DataID: {self.dataID}")    
-        self.logger.info(f"Configure path: {self.configurePath}")
-        self.logger.info(f"Output path: {self.outputFilename}")
-        self.logger.info(f"Start date: {self.startDate}")
-        self.logger.info(f"End date: {self.endDate}")
-        self.logger.info(f"Longitude bounds: {self.lonBounds}")
-        self.logger.info(f"Latitude bounds: {self.latBounds}")
-        self.logger.info(f"Variables: {self.variables}")   
-        return
-
-    def downloadSSH(self):
-        self.logger.info(f"Downloading SSH data...")
-        cop.subset(
-            dataset_id=self.dataID,
-            variables=self.variables,
-            start_datetime=self.startDate,
-            end_datetime=self.endDate,
-            minimum_longitude=self.lonBounds[0],
-            maximum_longitude=self.lonBounds[1],
-            minimum_latitude=self.latBounds[0],
-            maximum_latitude=self.latBounds[1],
-            output_filename=self.outputFilename,
-            credentials_file=self.configurePath,
-            force_download=True,
-        )
-        return
