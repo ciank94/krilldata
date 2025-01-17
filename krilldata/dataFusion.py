@@ -20,7 +20,6 @@ class DataFusion:
     bathymetrySaveFig = "bathymetryVerification.png"
     sstSaveFig = "sstVerification.png"
     fusedSaveFig = "fusedDistributions.png"
-
     doImputation = True
 
     def __init__(self, krillData, inputPath, outputPath):

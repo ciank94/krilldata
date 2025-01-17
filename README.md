@@ -10,9 +10,10 @@ package for training and predicting krill density using multivariable regression
 ## Usage (usage/)
 - train.py contains example workflow for training model to predict krill density
 - mapKrill.py contains example workflow for mapping predicted krill density on input features
-- download.py contains functionality for downloading data from Copernicus Marine Service using `input/download_params.json`
+- downloadCop.py contains functionality for downloading data from Copernicus Marine Service using `input/download_params.json`
 
-### download.py
+### downloadCop.py
+From the project root directory, run:
 ```bash
 python krilldata/downloadCop.py <dataKey>
 ```
