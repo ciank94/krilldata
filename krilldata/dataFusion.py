@@ -30,6 +30,7 @@ class DataFusion:
         self.bathymetryPath = f"{inputPath}/bathymetry.nc"
         self.sstPath = f"{inputPath}/sst.nc"
         self.sshPath = f"{inputPath}/ssh.nc"
+        self.chlPath = f"{inputPath}/chl.nc"
 
         # Main methods
         self.initLogger()
@@ -50,6 +51,7 @@ class DataFusion:
             self.fuseBathymetry()
             self.fuseSST()
             self.fuseSSH()
+            self.fuseCHL()
             if DataFusion.doImputation:
                 self.logger.info("Imputing missing values...")
                 self.imputeMissingValues()
@@ -240,6 +242,73 @@ class DataFusion:
 
         self.logger.info(f"Finished fusing SSH data")
         self.logger.info(f"{self.krillData.head()}")
+        return
+
+    def fuseCHL(self):
+        self.logger.info(f"Adding CHL column...")
+        self.logger.info(f"Fuse after September 1997...")
+        if not os.path.exists(self.chlPath):
+           self.logger.warning(f"CHL data does not exist, must be downloaded: {self.chlPath}")
+           raise FileNotFoundError(f"File does not exist: {self.chlPath}")
+        else:
+            self.logger.info(f"File already exists: {self.chlPath}")
+        chlDataset = xr.open_dataset(self.chlPath)
+        lonCHL = chlDataset["longitude"].data
+        latCHL = chlDataset["latitude"].data
+        timeCHL = chlDataset["time"].data
+        latKrill = self.krillData.LATITUDE
+        lonKrill = self.krillData.LONGITUDE
+        timeKrill = self.krillData.DATE
+
+        # Split data into pre-Sept 1997 and post-Sept 1997
+        cutoff_date = np.datetime64('1997-09-01')
+        pre_1997_mask = timeKrill < cutoff_date
+        post_1997_mask = ~pre_1997_mask
+        if np.any(post_1997_mask):
+            latKrill_post = latKrill[post_1997_mask]
+            lonKrill_post = lonKrill[post_1997_mask]
+            timeKrill_post = timeKrill[post_1997_mask]
+            
+            latNearest, lonNearest = self.findNearestPoints(latCHL, lonCHL, latKrill_post, lonKrill_post)
+            timeIndices = self.findNearestTime(timeCHL, timeKrill_post)
+            
+            post_1997_indices = self.krillData.index[post_1997_mask]
+            self.logger.info(f"Processing post-1997 CHL data")
+            for i, (idx, latIdx, lonIdx, timeIdx) in enumerate(zip(post_1997_indices, latNearest, lonNearest, timeIndices)):
+                chl = chlDataset["CHL"][timeIdx, latIdx, lonIdx]
+                self.krillData.loc[idx, "CHL"] = chl.data
+
+        # Impute pre-Sept 1997 data using mean values per location
+        if np.any(pre_1997_mask):
+            self.logger.info(f"Imputing pre-1997 CHL data")
+            pre_1997_indices = self.krillData.index[pre_1997_mask]
+            
+            # For each pre-1997 point, find the mean of post-1997 values within a spatial window
+            for idx in pre_1997_indices:
+                lat = self.krillData.loc[idx, "LATITUDE"]
+                lon = self.krillData.loc[idx, "LONGITUDE"]
+                
+                # Define spatial window (±2 degrees)
+                lat_window = 2.0
+                lon_window = 2.0
+                
+                # Find post-1997 points within the window
+                spatial_mask = (
+                    (self.krillData.LATITUDE >= lat - lat_window) &
+                    (self.krillData.LATITUDE <= lat + lat_window) &
+                    (self.krillData.LONGITUDE >= lon - lon_window) &
+                    (self.krillData.LONGITUDE <= lon + lon_window) &
+                    post_1997_mask
+                )
+                
+                if np.any(spatial_mask):
+                    # Impute using mean values from the spatial window
+                    self.krillData.loc[idx, "CHL"] = self.krillData.loc[spatial_mask, "CHL"].mean(skipna=True)
+                else:
+                    # If no points in window, use global means
+                    self.krillData.loc[idx, "CHL"] = self.krillData.loc[post_1997_mask, "CHL"].mean(skipna=True)
+
+        self.logger.info(f"Finished adding CHL column")
         return
 
     def imputeMissingValues(self):

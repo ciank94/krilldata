@@ -13,6 +13,7 @@ package for training and predicting krill density using multivariable regression
 - downloadCop.py contains functionality for downloading data from Copernicus Marine Service using `input/download_params.json`
 
 ### downloadCop.py
+Command line interface for downloading data from Copernicus Marine Service, requires credentials file;
 From the project root directory, run:
 ```bash
 python krilldata/downloadCop.py <dataKey>

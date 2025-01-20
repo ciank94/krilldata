@@ -40,10 +40,10 @@ class KrillTrain:
         'nnr': MLPRegressor
     }
 
-    featureColumns = ["YEAR", "LONGITUDE", "LATITUDE", "BATHYMETRY", "SST", "SSH", "UGO", "VGO", "NET_VEL"]
+    featureColumns = ["YEAR", "LONGITUDE", "LATITUDE", "BATHYMETRY", "SST", "SSH", "UGO", "VGO", "NET_VEL", "CHL"]
     targetColumn = "STANDARDISED_KRILL_UNDER_1M2"
 
-    def __init__(self, inputPath, outputPath, modelType):
+    def __init__(self, inputPath, outputPath, modelType, scenario='default'):
         #====Instance variables====
         self.inputPath = inputPath
         self.outputPath = outputPath
@@ -59,8 +59,9 @@ class KrillTrain:
         self.model = None
         self.modelType = modelType
         self.model_filename = f"{self.inputPath}/{self.modelType}Model.joblib"
-        self.modelParams = json.load(open("krilldata/model_params.json"))
+        self.modelParams = json.load(open("config/model_params.json"))
         self.model_exists = False
+        self.scenario = scenario
 
         #====Class Methods====
         self.initLogger()
@@ -92,7 +93,10 @@ class KrillTrain:
     def training(self):
         """Execute the training pipeline in the correct sequence."""
         self.trainTestSplit()
-        self.trainModelRandomSearch()  # This includes model fitting
+        if self.scenario == "default":
+            self.trainModel()
+        else:
+            self.trainModelRandomSearch()  # This includes model fitting
         self.modelMetrics()           # Calculate performance metrics
         self.saveMetrics()            # Save metrics to file
         self.saveModel()              # Save the final model
@@ -159,6 +163,19 @@ class KrillTrain:
         self.logger.info(f"Finished train/test split with {len(self.X_train)} training samples and {len(self.X_test)} test samples")
         return
 
+    def trainModel(self):
+        self.logger.info(f"Training {self.modelType} model...")
+        if self.modelType not in KrillTrain.models:
+            raise ValueError(f"Model type '{self.modelType}' not supported. Choose from: \
+            {list(KrillTrain.models.keys())}")
+        model_class = KrillTrain.models[self.modelType]
+        model_params = self.modelParams[self.modelType]
+        self.model = model_class(**model_params)
+        self.model.fit(self.X_train, self.y_train)
+        self.logger.info(f"Model parameters: {self.model.get_params()}")
+        self.logger.info(f"Model trained on {len(self.X_train)} training samples and {len(self.X_test)} test samples")
+        return
+
     def trainModelRandomSearch(self):
         """Run random search over specified parameters for a specified model."""
         self.logger.info(f"Training {self.modelType} model...")
@@ -188,7 +205,10 @@ class KrillTrain:
         self.logger.info(f"Calculating metrics...")
         
         # Get predictions using the best estimator
-        best_model = self.model.best_estimator_
+        if self.scenario == "default":
+            best_model = self.model
+        else:
+            best_model = self.model.best_estimator_
         y_pred = best_model.predict(self.X_test)
         
         # Calculate metrics
@@ -202,16 +222,28 @@ class KrillTrain:
         self.logger.info(f"Normalised RMSE: {normalised_rmse}")
         
         # Store metrics in a dictionary
-        self.metrics = {
-            'model_name': self.modelType,
-            'best_params': self.model.best_params_,
-            'r2': r2,
-            'mse': mse,
-            'rmse': rmse,
-            'normalised_rmse': normalised_rmse,
-            'cv_results_mean': float(self.model.best_score_),
-            'timestamp': '2025-01-14T14:19:20+01:00'
-        }
+        if self.scenario == "default":
+            self.metrics = {
+                'model_name': self.modelType,
+                'best_params': self.model.get_params(),
+                'r2': r2,
+                'mse': mse,
+                'rmse': rmse,
+                'normalised_rmse': normalised_rmse,
+                'cv_results_mean': float(self.model.score(self.X_test, self.y_test)),
+                'timestamp': np.datetime64('now').astype(str)
+            }
+        else:
+            self.metrics = {
+                'model_name': self.modelType,
+                'best_params': self.model.best_params_,
+                'r2': r2,
+                'mse': mse,
+                'rmse': rmse,
+                'normalised_rmse': normalised_rmse,
+                'cv_results_mean': float(self.model.best_score_),
+                'timestamp': np.datetime64('now').astype(str)
+            }
         self.logger.info(f"Stored dictionary of metrics: {self.metrics}")
         return
         
@@ -233,15 +265,18 @@ class KrillTrain:
         self.logger.info(f"Training final {self.modelType} model on full dataset...")
         
         # Get the best estimator from random search (already configured with best parameters)
-        full_model = self.model.best_estimator_
+        if self.scenario == "default":
+            best_model = self.model
+        else:
+            best_model = self.model.best_estimator_
         
         # Retrain on full dataset
-        full_model.fit(self.X, self.y)
+        best_model.fit(self.X, self.y)
         
         # Save the model
-        dump(full_model, self.model_filename)
+        dump(best_model, self.model_filename)
         self.logger.info(f"Saved model to {self.model_filename}")
-        self.logger.info(f"Model parameters: {full_model.get_params()}")
+        self.logger.info(f"Model parameters: {best_model.get_params()}")
         return
 
     def plotCorrelationMatrix(self, corr_matrix):

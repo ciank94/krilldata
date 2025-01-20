@@ -16,4 +16,4 @@ kb = ReadKrillBase(inputPath, outputPath) # subset krillbase data by key variabl
 DataFusion(kb.fileDataSubset, inputPath, outputPath) # fuse bathymetry, SST & krillbase data
 
 # ================KrillTrain class===============
-KrillTrain(inputPath, outputPath, modelType) # read fused data and train regressor
+KrillTrain(inputPath, outputPath, modelType, scenario="default") # read fused data and train regressor
