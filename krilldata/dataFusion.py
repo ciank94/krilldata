@@ -20,6 +20,7 @@ class DataFusion:
     bathymetrySaveFig = "bathymetryVerification.png"
     sstSaveFig = "sstVerification.png"
     fusedSaveFig = "fusedDistributions.png"
+    bioticSaveFig = "bioticDistributions.png"
     doImputation = True
 
     def __init__(self, krillData, inputPath, outputPath):
@@ -533,6 +534,13 @@ class DataFusion:
             self.logger.info(f"File does not exist: {DataFusion.fusedSaveFig}")
             self.logger.info(f"File will be created: {DataFusion.fusedSaveFig}")
             self.fusePlot()
+
+        if os.path.exists(os.path.join(self.outputPath, DataFusion.bioticSaveFig)):
+            self.logger.info(f"File already exists: {DataFusion.bioticSaveFig}")
+        else:
+            self.logger.info(f"File does not exist: {DataFusion.bioticSaveFig}")
+            self.logger.info(f"File will be created: {DataFusion.bioticSaveFig}")
+            self.bioticPlot()
         return
 
     def findNearestPoints(self, latGrid, lonGrid, latPoints, lonPoints):
@@ -732,4 +740,63 @@ class DataFusion:
         fig.savefig(os.path.join(self.outputPath, plotName), dpi=300, bbox_inches='tight')
         plt.close()
         self.logger.info(f"Saved fused distributions plot to: {plotName}")
+        return
+
+    def bioticPlot(self):
+        """Create figure with histograms showing CHL, Iron, Oxygen"""
+        # Define colors
+        barColor = '#7FB3D5'  # Soft blue
+        lineColor = '#E74C3C'  # Bright red
+        barAlpha = 0.7  # Transparency for bars
+        lineWidth = 2.5  # Thicker line for better visibility
+        
+        plt.rcParams.update({'font.size': 12})
+        fig = plt.figure(figsize=(18, 6))  # Wider figure for three columns
+        gs = plt.GridSpec(1, 3)  # One row, three columns
+        
+        # Chl histogram
+        ax1 = fig.add_subplot(gs[0, 0])
+        n1, bins1, _ = ax1.hist(self.krillData.CHL, bins=30, color=barColor, 
+                               edgecolor='white', alpha=barAlpha, linewidth=1)
+        ax1Twin = ax1.twinx()
+        ax1Twin.plot(bins1[:-1], np.cumsum(n1)/np.sum(n1)*100, color=lineColor, linewidth=lineWidth)
+        ax1.set_xlabel('Chlorophyll (mg/m3)', fontsize=14)
+        ax1.set_ylabel('Count', fontsize=14)
+        ax1Twin.set_ylabel('Cumulative %', fontsize=14, color=lineColor)
+        ax1.tick_params(axis='both', which='major', labelsize=12)
+        ax1Twin.tick_params(axis='y', colors=lineColor, labelsize=12)
+        ax1Twin.set_ylim(0, 105)
+        
+        # Iron histogram
+        ax2 = fig.add_subplot(gs[0, 1])
+        n2, bins2, _ = ax2.hist(self.krillData.FE, bins=30, color=barColor, 
+                               edgecolor='white', alpha=barAlpha, linewidth=1)
+        ax2Twin = ax2.twinx()
+        ax2Twin.plot(bins2[:-1], np.cumsum(n2)/np.sum(n2)*100, color=lineColor, linewidth=lineWidth)
+        ax2.set_xlabel('Iron (mmol/m3)', fontsize=14)
+        ax2.set_ylabel('Count', fontsize=14)
+        ax2Twin.set_ylabel('Cumulative %', fontsize=14, color=lineColor)
+        ax2.tick_params(axis='both', which='major', labelsize=12)
+        ax2Twin.tick_params(axis='y', colors=lineColor, labelsize=12)
+        ax2Twin.set_ylim(0, 105)
+        
+        # Oxygen histogram
+        ax3 = fig.add_subplot(gs[0, 2])  # Changed from [1, 0] to [0, 2]
+        n3, bins3, _ = ax3.hist(self.krillData.OXY, bins=30, color=barColor, 
+                               edgecolor='white', alpha=barAlpha, linewidth=1)
+        ax3Twin = ax3.twinx()
+        ax3Twin.plot(bins3[:-1], np.cumsum(n3)/np.sum(n3)*100, color=lineColor, linewidth=lineWidth)
+        ax3.set_xlabel('Oxygen (mmol/m3)', fontsize=14)
+        ax3.set_ylabel('Count', fontsize=14)
+        ax3Twin.set_ylabel('Cumulative %', fontsize=14, color=lineColor)
+        ax3.tick_params(axis='both', which='major', labelsize=12)
+        ax3Twin.tick_params(axis='y', colors=lineColor, labelsize=12)
+        ax3Twin.set_ylim(0, 105)
+
+        plt.tight_layout()        
+        # Save figure with high DPI
+        plotName = DataFusion.bioticSaveFig
+        fig.savefig(os.path.join(self.outputPath, plotName), dpi=300, bbox_inches='tight')
+        plt.close()
+        self.logger.info(f"Saved biotic distributions plot to: {plotName}")
         return
