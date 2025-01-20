@@ -40,7 +40,8 @@ class KrillTrain:
         'nnr': MLPRegressor
     }
 
-    featureColumns = ["YEAR", "LONGITUDE", "LATITUDE", "BATHYMETRY", "SST", "SSH", "UGO", "VGO", "NET_VEL", "CHL"]
+    featureColumns = ["YEAR", "LONGITUDE", "LATITUDE", "BATHYMETRY", "SST", \
+    "SSH", "UGO", "VGO", "NET_VEL", "CHL", "FE", "OXY"]
     targetColumn = "STANDARDISED_KRILL_UNDER_1M2"
 
     def __init__(self, inputPath, outputPath, modelType, scenario='default'):

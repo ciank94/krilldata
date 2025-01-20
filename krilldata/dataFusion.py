@@ -31,6 +31,8 @@ class DataFusion:
         self.sstPath = f"{inputPath}/sst.nc"
         self.sshPath = f"{inputPath}/ssh.nc"
         self.chlPath = f"{inputPath}/chl.nc"
+        self.ironPath = f"{inputPath}/iron.nc"
+        self.oxyPath = f"{inputPath}/oxygen.nc"
 
         # Main methods
         self.initLogger()
@@ -52,6 +54,8 @@ class DataFusion:
             self.fuseSST()
             self.fuseSSH()
             self.fuseCHL()
+            self.fuseIRON()
+            self.fuseOXY()
             if DataFusion.doImputation:
                 self.logger.info("Imputing missing values...")
                 self.imputeMissingValues()
@@ -79,8 +83,8 @@ class DataFusion:
         latNearest, lonNearest = self.findNearestPoints(latBath, lonBath, latKrill, lonKrill)
         for idx, (latIdx, lonIdx) in enumerate(zip(latNearest, lonNearest)):
             self.krillData.loc[idx, "BATHYMETRY"] = abs(elevation[latIdx, lonIdx])
-        
-        self.logger.info(f"Finished fusing bathymetry data")
+        bathymetryDataset.close()
+        self.logger.info(f"Finished fusing bathymetry data, closing dataset")
         self.logger.info(f"{self.krillData.head()}")
         return
 
@@ -123,6 +127,8 @@ class DataFusion:
             for i, (idx, latIdx, lonIdx, timeIdx) in enumerate(zip(post_1982_indices, latNearest, lonNearest, timeIndices)):
                 init_val = sstDataset["analysed_sst"][timeIdx, latIdx, lonIdx].data
                 self.krillData.loc[idx, "SST"] = init_val - 273.15  # Convert to Celsius
+            sstDataset.close()
+            self.logger.info(f"Finished processing post-Oct 1982 SST data, closing dataset")
 
         # Impute pre-1982 data using mean values per location
         if np.any(pre_1982_mask):
@@ -203,6 +209,8 @@ class DataFusion:
                 self.krillData.loc[idx, "UGO"] = ugos_val.data
                 self.krillData.loc[idx, "VGO"] = vgos_val.data
                 self.krillData.loc[idx, "NET_VEL"] = np.sqrt(ugos_val.data ** 2 + vgos_val.data ** 2)
+            sshDataset.close()
+            self.logger.info(f"Finished processing post-1993 SSH data, closing dataset")
 
         # Impute pre-1993 data using mean values per location
         if np.any(pre_1993_mask):
@@ -278,6 +286,9 @@ class DataFusion:
                 chl = chlDataset["CHL"][timeIdx, latIdx, lonIdx]
                 self.krillData.loc[idx, "CHL"] = chl.data
 
+            chlDataset.close()
+            self.logger.info(f"Finished processing post-1997 CHL data, closing dataset")
+            
         # Impute pre-Sept 1997 data using mean values per location
         if np.any(pre_1997_mask):
             self.logger.info(f"Imputing pre-1997 CHL data")
@@ -310,6 +321,158 @@ class DataFusion:
 
         self.logger.info(f"Finished adding CHL column")
         return
+
+    def fuseIRON(self):
+        self.logger.info(f"Adding IRON column...")
+        self.logger.info(f"Fuse after January 1993...")
+        if not os.path.exists(self.ironPath):
+           self.logger.warning(f"IRON data does not exist, must be downloaded: {self.ironPath}")
+           raise FileNotFoundError(f"File does not exist: {self.ironPath}")
+        else:
+            self.logger.info(f"File already exists: {self.ironPath}")
+        ironDataset = xr.open_dataset(self.ironPath)
+        lonIRON = ironDataset["longitude"].data
+        latIRON = ironDataset["latitude"].data
+        timeIRON = ironDataset["time"].data
+        latKrill = self.krillData.LATITUDE
+        lonKrill = self.krillData.LONGITUDE
+        timeKrill = self.krillData.DATE
+
+        # Split data into pre-Jan 1993 and post-Jan 1993
+        cutoff_date = np.datetime64('1993-01-01')
+        pre_1993_mask = timeKrill < cutoff_date
+        post_1993_mask = ~pre_1993_mask
+        if np.any(post_1993_mask):
+            latKrill_post = latKrill[post_1993_mask]
+            lonKrill_post = lonKrill[post_1993_mask]
+            timeKrill_post = timeKrill[post_1993_mask]
+            
+            latNearest, lonNearest = self.findNearestPoints(latIRON, lonIRON, latKrill_post, lonKrill_post)
+            timeIndices = self.findNearestTime(timeIRON, timeKrill_post)
+            
+            post_1993_indices = self.krillData.index[post_1993_mask]
+            self.logger.info(f"Processing post-1993 IRON data")
+            for i, (idx, latIdx, lonIdx, timeIdx) in enumerate(zip(post_1993_indices, latNearest, lonNearest, timeIndices)):
+                iron = ironDataset["fe"][timeIdx, 0, latIdx, lonIdx] #depth = 0 for first index
+                self.krillData.loc[idx, "FE"] = iron.data
+            ironDataset.close()
+            self.logger.info(f"Finished processing post-1993 IRON data, closing dataset")
+            
+        # Impute pre-Jan 1993 data using mean values per location
+        if np.any(pre_1993_mask):
+            self.logger.info(f"Imputing pre-1993 IRON data")
+            pre_1993_indices = self.krillData.index[pre_1993_mask]
+
+            # Get pre-1993 coordinates
+            lat = self.krillData.loc[pre_1993_indices, "LATITUDE"]
+            lon = self.krillData.loc[pre_1993_indices, "LONGITUDE"]
+
+            # Define spatial window (±2 degrees)
+            lat_window = 2.0
+            lon_window = 2.0
+
+            # Get post-1993 data and create a mapping of filtered indices to original indices
+            post_1993_data = self.krillData[post_1993_mask].copy()
+            post_1993_data['original_index'] = post_1993_data.index
+            post_1993_data = post_1993_data.reset_index(drop=True)
+            
+            # Initialize dictionary to store masks for each pre-1993 point
+            spatial_masks = {}
+            
+            # For each pre-1993 point, find the mean of post-1993 values within a spatial window
+            self.logger.info(f"Creating masks for each pre-1993 point")
+            for lon_val, lat_val, idx in zip(lon, lat, pre_1993_indices):
+    
+                # Find post-1993 points within the window using filtered dataset
+                spatial_mask = (
+                    (post_1993_data.LATITUDE >= lat_val - lat_window) &
+                    (post_1993_data.LATITUDE <= lat_val + lat_window) &
+                    (post_1993_data.LONGITUDE >= lon_val - lon_window) &
+                    (post_1993_data.LONGITUDE <= lon_val + lon_window)
+                )
+                spatial_masks[idx] = spatial_mask
+            
+            # Calculate global mean for points with no neighbors
+            global_mean = self.krillData.loc[post_1993_mask, "FE"].mean(skipna=True)
+            
+            # Now assign all values at once
+            self.logger.info("Assigning imputed values...")
+            for idx, mask in spatial_masks.items():
+                if np.any(mask):
+                    matching_indices = post_1993_data[mask]['original_index']
+                    self.krillData.loc[idx, "FE"] = self.krillData.loc[matching_indices, "FE"].mean(skipna=True)
+                else:
+                    self.krillData.loc[idx, "FE"] = global_mean
+        self.logger.info(f"Finished adding FE column")
+        return
+
+    def fuseOXY(self):
+        self.logger.info(f"Adding OXY column...")
+        self.logger.info(f"Fuse after January 1993...")
+        if not os.path.exists(self.oxyPath):
+           self.logger.warning(f"OXY data does not exist, must be downloaded: {self.oxyPath}")
+           raise FileNotFoundError(f"File does not exist: {self.oxyPath}")
+        else:
+            self.logger.info(f"File already exists: {self.oxyPath}")
+        oxyDataset = xr.open_dataset(self.oxyPath)
+        lonOXY = oxyDataset["longitude"].data
+        latOXY = oxyDataset["latitude"].data
+        timeOXY = oxyDataset["time"].data
+        latKrill = self.krillData.LATITUDE
+        lonKrill = self.krillData.LONGITUDE
+        timeKrill = self.krillData.DATE
+
+        # Split data into pre-Jan 1993 and post-Jan 1993
+        cutoff_date = np.datetime64('1993-01-01')
+        pre_1993_mask = timeKrill < cutoff_date
+        post_1993_mask = ~pre_1993_mask
+        if np.any(post_1993_mask):
+            latKrill_post = latKrill[post_1993_mask]
+            lonKrill_post = lonKrill[post_1993_mask]
+            timeKrill_post = timeKrill[post_1993_mask]
+            
+            latNearest, lonNearest = self.findNearestPoints(latOXY, lonOXY, latKrill_post, lonKrill_post)
+            timeIndices = self.findNearestTime(timeOXY, timeKrill_post)
+            
+            post_1993_indices = self.krillData.index[post_1993_mask]
+            self.logger.info(f"Processing post-1993 OXY data")
+            for i, (idx, latIdx, lonIdx, timeIdx) in enumerate(zip(post_1993_indices, latNearest, lonNearest, timeIndices)):
+                oxy = oxyDataset["o2"][timeIdx, 0, latIdx, lonIdx] #depth = 0 for first index
+                self.krillData.loc[idx, "OXY"] = oxy.data
+
+        # Impute pre-Jan 1993 data using mean values per location
+        if np.any(pre_1993_mask):
+            self.logger.info(f"Imputing pre-1993 OXY data")
+            pre_1993_indices = self.krillData.index[pre_1993_mask]
+            
+            # For each pre-1993 point, find the mean of post-1993 values within a spatial window
+            for idx in pre_1993_indices:
+                lat = self.krillData.loc[idx, "LATITUDE"]
+                lon = self.krillData.loc[idx, "LONGITUDE"]
+                
+                # Define spatial window (±2 degrees)
+                lat_window = 2.0
+                lon_window = 2.0
+                
+                # Find post-1993 points within the window
+                spatial_mask = (
+                    (self.krillData.LATITUDE >= lat - lat_window) &
+                    (self.krillData.LATITUDE <= lat + lat_window) &
+                    (self.krillData.LONGITUDE >= lon - lon_window) &
+                    (self.krillData.LONGITUDE <= lon + lon_window) &
+                    post_1993_mask
+                )
+                
+                if np.any(spatial_mask):
+                    # Impute using mean values from the spatial window
+                    self.krillData.loc[idx, "OXY"] = self.krillData.loc[spatial_mask, "OXY"].mean(skipna=True)
+                else:
+                    # If no points in window, use global means
+                    self.krillData.loc[idx, "OXY"] = self.krillData.loc[post_1993_mask, "OXY"].mean(skipna=True)
+
+        self.logger.info(f"Finished adding OXY column")
+        return
+   
 
     def imputeMissingValues(self):
         """
@@ -374,30 +537,35 @@ class DataFusion:
 
     def findNearestPoints(self, latGrid, lonGrid, latPoints, lonPoints):
         """
-        Find nearest lat/lon pairs in a grid for given points
+        Find nearest lat/lon pairs in a grid for given points using direct distance calculation
         """
-        # Ensure arrays are sorted for searchsorted
-        latSorted = np.sort(latGrid)
-        lonSorted = np.sort(lonGrid)
+        # Print debug information
+        self.logger.info(f"Latitude grid range: {latGrid.min():.2f} to {latGrid.max():.2f}")
+        self.logger.info(f"Points latitude range: {latPoints.min():.2f} to {latPoints.max():.2f}")
         
-        # Get the insertion points
-        latIdx = np.searchsorted(latSorted, latPoints)
-        lonIdx = np.searchsorted(lonSorted, lonPoints)
+        latNearest = np.zeros_like(latPoints, dtype=int)
+        lonNearest = np.zeros_like(lonPoints, dtype=int)
         
-        # Clip to valid range
-        latIdx = np.clip(latIdx, 1, len(latGrid)-1)
-        lonIdx = np.clip(lonIdx, 1, len(lonGrid)-1)
-        
-        # Find nearest point by comparing distances
-        latPrev = latGrid[latIdx-1]
-        latNext = latGrid[latIdx]
-        latNearest = np.where(np.abs(latPoints - latPrev) < np.abs(latPoints - latNext), 
-                            latIdx-1, latIdx)
-        
-        lonPrev = lonGrid[lonIdx-1]
-        lonNext = lonGrid[lonIdx]
-        lonNearest = np.where(np.abs(lonPoints - lonPrev) < np.abs(lonPoints - lonNext), 
-                            lonIdx-1, lonIdx)
+        # Iterate through each point
+        for i, (lat, lon) in enumerate(zip(latPoints, lonPoints)):
+            # Find nearest latitude
+            lat_distances = np.abs(latGrid - lat)
+            lat_idx = np.argmin(lat_distances)
+            # Clip latitude index to valid range
+            lat_idx = min(max(0, lat_idx), len(latGrid) - 1)
+            latNearest[i] = lat_idx
+            
+            # Find nearest longitude
+            lon_distances = np.abs(lonGrid - lon)
+            lon_idx = np.argmin(lon_distances)
+            # Clip longitude index to valid range
+            lon_idx = min(max(0, lon_idx), len(lonGrid) - 1)
+            lonNearest[i] = lon_idx
+            
+            # Debug output for first few points
+            if i < 5:
+                self.logger.info(f"Point {i}: lat={lat:.2f}, closest lat={latGrid[lat_idx]:.2f} at index {lat_idx}")
+                self.logger.info(f"Point {i}: lon={lon:.2f}, closest lon={lonGrid[lon_idx]:.2f} at index {lon_idx}")
         
         return latNearest, lonNearest
 
@@ -565,6 +733,3 @@ class DataFusion:
         plt.close()
         self.logger.info(f"Saved fused distributions plot to: {plotName}")
         return
-
-
-
