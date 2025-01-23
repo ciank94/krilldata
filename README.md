@@ -10,10 +10,11 @@ package for training and predicting krill density using multivariable regression
 ## Usage (usage/)
 - train.py contains example workflow for training model to predict krill density
 - mapKrill.py contains example workflow for mapping predicted krill density on input features
-- downloadCop.py contains functionality for downloading data from Copernicus Marine Service using `input/download_params.json`
 
+
+## Command line interfaces
 ### downloadCop.py
-Command line interface for downloading data from Copernicus Marine Service, requires credentials file;
+Command line interface for downloading data from Copernicus Marine Service according to `input/download_params.json`, requires credentials file;
 From the project root directory, run:
 ```bash
 python krilldata/downloadCop.py <dataKey>
@@ -23,4 +24,16 @@ where dataKey is a key as listed in `input/download_params.json`, for example:
 python krilldata/downloadCop.py ssh
 ```
 will download SSH data from Copernicus Marine Service and save to input/ssh.nc
+
+### exploreNC.py
+Command line interface for exploring contents of NetCDF/xarray datasets, requires a NetCDF/xarray dataset as input;
+From the project root directory, run:
+```bash
+python krilldata/exploreNC.py <filename>
+```
+where filename is a NetCDF/xarray dataset, for example:
+```bash
+python krilldata/exploreNC.py input/ssh.nc
+```
+will explore contents of input/ssh.nc
 

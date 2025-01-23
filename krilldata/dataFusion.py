@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 import copernicusmarine as cop
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 class DataFusion:
     # logger
@@ -640,29 +641,46 @@ class DataFusion:
         
         # Create masked array for bathymetry where elevation <= 0
         bathymetry = abs(bathymetryDataset.elevation.values)
-        masked_bathymetry = np.ma.masked_where(bathymetry < 0, bathymetry)
+        # Mask both land (elevation > 0) and invalid points
+        masked_bathymetry = np.ma.masked_where((bathymetry <= 0) | (bathymetry > 10000), bathymetry)
         
-        fig, ax = plt.subplots(figsize=(10, 8))
+        # Create figure with extra width to accommodate colorbars
+        fig, ax = plt.subplots(figsize=(11, 8))
         
         # Plot bathymetry with ocean-focused colormap
         im = ax.pcolormesh(bathymetryDataset.lon, bathymetryDataset.lat, 
                           masked_bathymetry, shading='auto', 
                           cmap='Blues')  # Blues_r gives darker blues for deeper water
 
-        im.set_clim(0, None)
-        im.cmap.set_bad('grey')
+        im.set_clim(0, 5000)  # Set bathymetry limits between 0-5000m
+        im.cmap.set_bad('lightgrey')  # Set land points to grey
         
         # Plot krill locations
         scatter = ax.scatter(self.krillData.LONGITUDE, self.krillData.LATITUDE, 
                            c=self.krillData.SST, cmap='hot', 
                            s=20, edgecolor='black', linewidth=0.5)
         
-        plt.colorbar(scatter, ax=ax, label='SST (°C)')
-        ax.set_title('Ocean Bathymetry, sst and Krill Locations')
-        ax.set_xlabel('Longitude')
-        ax.set_ylabel('Latitude')
+        # Add colorbars on opposite sides with consistent size
+        divider = make_axes_locatable(ax)
+        cax1 = divider.append_axes("right", size="2%", pad=0.1)
+        cax2 = divider.append_axes("right", size="2%", pad=0.8)
+        
+        cbar1 = plt.colorbar(im, cax=cax1)
+        cbar2 = plt.colorbar(scatter, cax=cax2)
+        
+        # Set colorbar labels with increased font size
+        cbar1.set_label('Ocean Depth (m)', fontsize=12)
+        cbar2.set_label('SST (°C)', fontsize=12)
+        cbar1.ax.tick_params(labelsize=11)
+        cbar2.ax.tick_params(labelsize=11)
+        
+        # Increase font sizes for axis labels and ticks
+        ax.set_xlabel('Longitude', fontsize=14)
+        ax.set_ylabel('Latitude', fontsize=14)
+        ax.tick_params(axis='both', labelsize=12)
         
         plt.tight_layout()
+        
         plotName = DataFusion.sstSaveFig
         plt.savefig(os.path.join(self.outputPath, plotName), dpi=300, bbox_inches='tight')
         plt.close()
