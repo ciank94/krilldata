@@ -4,8 +4,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import os
+import cmocean
 import copernicusmarine as cop
-from mpl_toolkits.axes_grid1 import make_axes_locatable
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 
 class DataFusion:
     # logger
@@ -22,6 +24,7 @@ class DataFusion:
     sstSaveFig = "sstVerification.png"
     fusedSaveFig = "fusedDistributions.png"
     bioticSaveFig = "bioticDistributions.png"
+    environmentalSaveFig = "environmentalData.png"
     doImputation = True
 
     def __init__(self, krillData, inputPath, outputPath):
@@ -519,6 +522,7 @@ class DataFusion:
             self.logger.info(f"File will be created: {DataFusion.sstSaveFig}")
             bathymetryDataset = xr.open_dataset(self.bathymetryPath)
             self.plotSST(bathymetryDataset)
+            bathymetryDataset.close()
 
         # Plot bathymetry at krill locations
         if os.path.exists(os.path.join(self.outputPath, DataFusion.bathymetrySaveFig)):
@@ -526,7 +530,9 @@ class DataFusion:
         else:
             self.logger.info(f"File does not exist: {DataFusion.bathymetrySaveFig}")
             self.logger.info(f"File will be created: {DataFusion.bathymetrySaveFig}")
+            bathymetryDataset = xr.open_dataset(self.bathymetryPath)
             self.plotBathymetry(bathymetryDataset)
+            bathymetryDataset.close()
 
         # Plot fused data
         if os.path.exists(os.path.join(self.outputPath, DataFusion.fusedSaveFig)):
@@ -542,6 +548,15 @@ class DataFusion:
             self.logger.info(f"File does not exist: {DataFusion.bioticSaveFig}")
             self.logger.info(f"File will be created: {DataFusion.bioticSaveFig}")
             self.bioticPlot()
+
+        if os.path.exists(os.path.join(self.outputPath, DataFusion.environmentalSaveFig)):
+            self.logger.info(f"File already exists: {DataFusion.environmentalSaveFig}")
+        else:
+            self.logger.info(f"File does not exist: {DataFusion.environmentalSaveFig}")
+            self.logger.info(f"File will be created: {DataFusion.environmentalSaveFig}")
+            bathymetryDataset = xr.open_dataset(self.bathymetryPath)
+            self.plotEnvironmentalData(bathymetryDataset)
+            bathymetryDataset.close()
         return
 
     def findNearestPoints(self, latGrid, lonGrid, latPoints, lonPoints):
@@ -621,10 +636,9 @@ class DataFusion:
         # Plot krill locations
         scatter = ax.scatter(self.krillData.LONGITUDE, self.krillData.LATITUDE, 
                            c=self.krillData.BATHYMETRY, cmap='Blues', 
-                           s=20, edgecolor='black', linewidth=0.5)
+                           s=10, edgecolor='black', linewidth=0.5)
         
         plt.colorbar(im, ax=ax, label='Ocean Depth (m)')
-        ax.set_title('Ocean Bathymetry and Krill Locations')
         ax.set_xlabel('Longitude')
         ax.set_ylabel('Latitude')
         
@@ -658,15 +672,11 @@ class DataFusion:
         # Plot krill locations
         scatter = ax.scatter(self.krillData.LONGITUDE, self.krillData.LATITUDE, 
                            c=self.krillData.SST, cmap='hot', 
-                           s=20, edgecolor='black', linewidth=0.5)
+                           s=10, edgecolor='black', linewidth=0.5)
         
         # Add colorbars on opposite sides with consistent size
-        divider = make_axes_locatable(ax)
-        cax1 = divider.append_axes("right", size="2%", pad=0.1)
-        cax2 = divider.append_axes("right", size="2%", pad=0.8)
-        
-        cbar1 = plt.colorbar(im, cax=cax1)
-        cbar2 = plt.colorbar(scatter, cax=cax2)
+        cbar1 = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cbar2 = plt.colorbar(scatter, ax=ax, fraction=0.046, pad=0.08)
         
         # Set colorbar labels with increased font size
         cbar1.set_label('Ocean Depth (m)', fontsize=12)
@@ -817,4 +827,161 @@ class DataFusion:
         fig.savefig(os.path.join(self.outputPath, plotName), dpi=300, bbox_inches='tight')
         plt.close()
         self.logger.info(f"Saved biotic distributions plot to: {plotName}")
+        return
+
+    def plotEnvironmentalData(self, bathymetryDataset):
+        """Create a figure showing bathymetry with krill locations and environmental variables"""
+        self.logger.info("Plotting environmental data...")
+        
+        # Convert DATE to datetime if it's not already
+        if not pd.api.types.is_datetime64_any_dtype(self.krillData.DATE):
+            self.krillData['DATE'] = pd.to_datetime(self.krillData['DATE'])
+        
+        # Filter data for January 2016
+        jan_2016_mask = (self.krillData.DATE.dt.year == 2016) & (self.krillData.DATE.dt.month == 1)
+        
+        # Load SST data
+        sstDataset = xr.open_dataset(self.sstPath)
+        # Find January 2016 in SST data
+        sst_time_idx = np.where((sstDataset.time.dt.year == 2016) & (sstDataset.time.dt.month == 1))[0][0]
+        sst_data = sstDataset["analysed_sst"][sst_time_idx].values - 273.15  # Convert to Celsius
+        
+        # Load SSH data
+        sshDataset = xr.open_dataset(self.sshPath)
+        # Find January 2016 in SSH data
+        ssh_time_idx = np.where((sshDataset.time.dt.year == 2016) & (sshDataset.time.dt.month == 1))[0][0]
+        ssh_data = sshDataset["adt"][ssh_time_idx].values
+        net_vel_data = np.sqrt(sshDataset["ugos"][ssh_time_idx].values**2 + 
+                              sshDataset["vgos"][ssh_time_idx].values**2)
+        
+        # Load CHL data
+        chlDataset = xr.open_dataset(self.chlPath)
+        chl_time_idx = np.where((chlDataset.time.dt.year == 2016) & (chlDataset.time.dt.month == 1))[0][0]
+        chl_data = chlDataset["CHL"][chl_time_idx].values
+        
+        # Load OXY data
+        oxygenDataset = xr.open_dataset(self.oxyPath)
+        o2_time_idx = np.where((oxygenDataset.time.dt.year == 2016) & (oxygenDataset.time.dt.month == 1))[0][0]
+        o2_data = oxygenDataset["o2"][o2_time_idx, 0].values  # Select the first depth level (depth=0)
+        
+        # Create masked array for bathymetry where elevation <= 0
+        bathymetry = abs(bathymetryDataset.elevation.values)
+        # Mask both land (elevation > 0) and invalid points
+        masked_bathymetry = np.ma.masked_where((bathymetry <= 0) | (bathymetry > 10000), bathymetry)
+        
+        # Create figure with 3x2 subplots
+        fig = plt.figure(figsize=(24, 24))  # Increased height for 3x2 layout
+        gs = fig.add_gridspec(3, 2, hspace=0.005, wspace=0.15)  # Changed to 3x2
+        
+        projection = ccrs.PlateCarree()
+        
+        # Plot 1: Bathymetry with krill locations
+        ax1 = plt.subplot(gs[0, 0], projection=projection)
+        im1 = ax1.pcolormesh(bathymetryDataset.lon, bathymetryDataset.lat, 
+                          masked_bathymetry, shading='auto', 
+                          cmap='Blues', transform=projection, zorder=1)
+        im1.set_clim(0, 5000)
+        ax1.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)  # Increased zorder
+        ax1.coastlines(zorder=101)  # Coastlines on top
+        ax1.scatter(self.krillData.LONGITUDE, 
+                   self.krillData.LATITUDE,
+                   c='red', s=10, edgecolor='black', linewidth=0.3,  # Reduced size
+                   transform=projection, zorder=102)  # Points on top of everything
+        cbar1 = plt.colorbar(im1, ax=ax1, fraction=0.025, pad=0.04)
+        cbar1.set_label('Depth (m)', fontsize=12)
+        cbar1.ax.tick_params(labelsize=11)
+        ax1.set_xlabel('Longitude', fontsize=12)
+        ax1.set_ylabel('Latitude', fontsize=12)
+        ax1.tick_params(axis='both', labelsize=11)
+        
+        # Plot 2: SST
+        ax2 = plt.subplot(gs[0, 1], projection=projection)
+        im2 = ax2.pcolormesh(sstDataset.longitude, sstDataset.latitude, 
+                          sst_data, shading='auto',
+                          cmap=cmocean.cm.thermal, transform=projection, zorder=1)
+        ax2.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
+        ax2.coastlines(zorder=101)
+        cbar2 = plt.colorbar(im2, ax=ax2, fraction=0.025, pad=0.04)
+        cbar2.set_label('Temperature (°C)', fontsize=12)
+        cbar2.ax.tick_params(labelsize=11)
+        ax2.set_xlabel('Longitude', fontsize=12)
+        ax2.set_ylabel('Latitude', fontsize=12)
+        ax2.tick_params(axis='both', labelsize=11)
+        
+        # Plot 3: SSH
+        ax3 = plt.subplot(gs[1, 0], projection=projection)
+        im3 = ax3.pcolormesh(sshDataset.longitude, sshDataset.latitude, 
+                          ssh_data, shading='auto',
+                          cmap=cmocean.cm.balance, transform=projection, zorder=1)
+        ax3.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
+        ax3.coastlines(zorder=101)
+        cbar3 = plt.colorbar(im3, ax=ax3, fraction=0.025, pad=0.04)
+        cbar3.set_label('Height (m)', fontsize=12)
+        cbar3.ax.tick_params(labelsize=11)
+        ax3.set_xlabel('Longitude', fontsize=12)
+        ax3.set_ylabel('Latitude', fontsize=12)
+        ax3.tick_params(axis='both', labelsize=11)
+        
+        # Plot 4: NET_VEL
+        ax4 = plt.subplot(gs[1, 1], projection=projection)
+        im4 = ax4.pcolormesh(sshDataset.longitude, sshDataset.latitude, 
+                          net_vel_data, shading='auto',
+                          cmap=cmocean.cm.speed, transform=projection, zorder=1)
+        ax4.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
+        ax4.coastlines(zorder=101)
+        cbar4 = plt.colorbar(im4, ax=ax4, fraction=0.025, pad=0.04)
+        cbar4.set_label('Velocity (m/s)', fontsize=12)
+        cbar4.ax.tick_params(labelsize=11)
+        ax4.set_xlabel('Longitude', fontsize=12)
+        ax4.set_ylabel('Latitude', fontsize=12)
+        ax4.tick_params(axis='both', labelsize=11)
+
+        # Plot 5: CHL
+        ax5 = plt.subplot(gs[2, 0], projection=projection)
+        im5 = ax5.pcolormesh(chlDataset.longitude, chlDataset.latitude, 
+                          chl_data, shading='auto',
+                          cmap=cmocean.cm.algae, transform=projection, zorder=1)
+        im5.set_clim(0, 2)  # Set max to 2 for CHL
+        ax5.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
+        ax5.coastlines(zorder=101)
+        cbar5 = plt.colorbar(im5, ax=ax5, fraction=0.025, pad=0.04)
+        cbar5.set_label('Chlorophyll (mg/m³)', fontsize=12)
+        cbar5.ax.tick_params(labelsize=11)
+        ax5.set_xlabel('Longitude', fontsize=12)
+        ax5.set_ylabel('Latitude', fontsize=12)
+        ax5.tick_params(axis='both', labelsize=11)
+        
+        # Plot 6: O2
+        ax6 = plt.subplot(gs[2, 1], projection=projection)
+        im6 = ax6.pcolormesh(oxygenDataset.longitude, oxygenDataset.latitude, 
+                          o2_data, shading='auto',
+                          cmap=cmocean.cm.deep, transform=projection, zorder=1)  # Changed to deep colormap
+        ax6.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
+        ax6.coastlines(zorder=101)
+        cbar6 = plt.colorbar(im6, ax=ax6, fraction=0.025, pad=0.04)
+        cbar6.set_label('Oxygen (mmol/m$^3$)', fontsize=12)
+        cbar6.ax.tick_params(labelsize=11)
+        ax6.set_xlabel('Longitude', fontsize=12)
+        ax6.set_ylabel('Latitude', fontsize=12)
+        ax6.tick_params(axis='both', labelsize=11)
+        
+        # Set common gridlines for all subplots
+        for ax in [ax1, ax2, ax3, ax4, ax5, ax6]:
+            gl = ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False)
+            gl.top_labels = False
+            gl.right_labels = False
+            gl.xlabel_style = {'size': 11}
+            gl.ylabel_style = {'size': 11}
+        
+        plotName = DataFusion.environmentalSaveFig
+        plt.savefig(os.path.join(self.outputPath, plotName), dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        # Close datasets
+        sstDataset.close()
+        sshDataset.close()
+        chlDataset.close()
+        oxygenDataset.close()
+        
+        self.logger.info(f"Saved environmental data plot to: {plotName}")
         return
