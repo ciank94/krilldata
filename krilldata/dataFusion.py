@@ -870,8 +870,9 @@ class DataFusion:
         masked_bathymetry = np.ma.masked_where((bathymetry <= 0) | (bathymetry > 10000), bathymetry)
         
         # Create figure with 3x2 subplots
-        fig = plt.figure(figsize=(24, 24))  # Increased height for 3x2 layout
-        gs = fig.add_gridspec(3, 2, hspace=0.005, wspace=0.15)  # Changed to 3x2
+        plt.rcParams.update({'font.size': 20})  # Set default font size to 20
+        fig = plt.figure(figsize=(28, 24))  # Increased height for better spacing
+        gs = fig.add_gridspec(3, 2, hspace=0.001, wspace=0.25)  # Increased hspace from 0.005 to 0.4
         
         projection = ccrs.PlateCarree()
         
@@ -888,11 +889,11 @@ class DataFusion:
                    c='red', s=10, edgecolor='black', linewidth=0.3,  # Reduced size
                    transform=projection, zorder=102)  # Points on top of everything
         cbar1 = plt.colorbar(im1, ax=ax1, fraction=0.025, pad=0.04)
-        cbar1.set_label('Depth (m)', fontsize=12)
-        cbar1.ax.tick_params(labelsize=11)
-        ax1.set_xlabel('Longitude', fontsize=12)
-        ax1.set_ylabel('Latitude', fontsize=12)
-        ax1.tick_params(axis='both', labelsize=11)
+        cbar1.set_label('Depth (m)', fontsize=20)
+        cbar1.ax.tick_params(labelsize=20)
+        ax1.set_xlabel('Longitude', fontsize=20)
+        ax1.set_ylabel('Latitude', fontsize=20)
+        ax1.tick_params(axis='both', labelsize=20)
         
         # Plot 2: SST
         ax2 = plt.subplot(gs[0, 1], projection=projection)
@@ -902,11 +903,11 @@ class DataFusion:
         ax2.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
         ax2.coastlines(zorder=101)
         cbar2 = plt.colorbar(im2, ax=ax2, fraction=0.025, pad=0.04)
-        cbar2.set_label('Temperature (°C)', fontsize=12)
-        cbar2.ax.tick_params(labelsize=11)
-        ax2.set_xlabel('Longitude', fontsize=12)
-        ax2.set_ylabel('Latitude', fontsize=12)
-        ax2.tick_params(axis='both', labelsize=11)
+        cbar2.set_label('Temperature (°C)', fontsize=20)
+        cbar2.ax.tick_params(labelsize=20)
+        ax2.set_xlabel('Longitude', fontsize=20)
+        ax2.set_ylabel('Latitude', fontsize=20)
+        ax2.tick_params(axis='both', labelsize=20)
         
         # Plot 3: SSH
         ax3 = plt.subplot(gs[1, 0], projection=projection)
@@ -916,11 +917,11 @@ class DataFusion:
         ax3.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
         ax3.coastlines(zorder=101)
         cbar3 = plt.colorbar(im3, ax=ax3, fraction=0.025, pad=0.04)
-        cbar3.set_label('Height (m)', fontsize=12)
-        cbar3.ax.tick_params(labelsize=11)
-        ax3.set_xlabel('Longitude', fontsize=12)
-        ax3.set_ylabel('Latitude', fontsize=12)
-        ax3.tick_params(axis='both', labelsize=11)
+        cbar3.set_label('Height (m)', fontsize=20)
+        cbar3.ax.tick_params(labelsize=20)
+        ax3.set_xlabel('Longitude', fontsize=20)
+        ax3.set_ylabel('Latitude', fontsize=20)
+        ax3.tick_params(axis='both', labelsize=20)
         
         # Plot 4: NET_VEL
         ax4 = plt.subplot(gs[1, 1], projection=projection)
@@ -930,11 +931,11 @@ class DataFusion:
         ax4.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
         ax4.coastlines(zorder=101)
         cbar4 = plt.colorbar(im4, ax=ax4, fraction=0.025, pad=0.04)
-        cbar4.set_label('Velocity (m/s)', fontsize=12)
-        cbar4.ax.tick_params(labelsize=11)
-        ax4.set_xlabel('Longitude', fontsize=12)
-        ax4.set_ylabel('Latitude', fontsize=12)
-        ax4.tick_params(axis='both', labelsize=11)
+        cbar4.set_label('Velocity (m/s)', fontsize=20)
+        cbar4.ax.tick_params(labelsize=20)
+        ax4.set_xlabel('Longitude', fontsize=20)
+        ax4.set_ylabel('Latitude', fontsize=20)
+        ax4.tick_params(axis='both', labelsize=20)
 
         # Plot 5: CHL
         ax5 = plt.subplot(gs[2, 0], projection=projection)
@@ -945,11 +946,11 @@ class DataFusion:
         ax5.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
         ax5.coastlines(zorder=101)
         cbar5 = plt.colorbar(im5, ax=ax5, fraction=0.025, pad=0.04)
-        cbar5.set_label('Chlorophyll (mg/m³)', fontsize=12)
-        cbar5.ax.tick_params(labelsize=11)
-        ax5.set_xlabel('Longitude', fontsize=12)
-        ax5.set_ylabel('Latitude', fontsize=12)
-        ax5.tick_params(axis='both', labelsize=11)
+        cbar5.set_label('Chlorophyll (mg/m$^3$)', fontsize=20)
+        cbar5.ax.tick_params(labelsize=20)
+        ax5.set_xlabel('Longitude', fontsize=20)
+        ax5.set_ylabel('Latitude', fontsize=20)
+        ax5.tick_params(axis='both', labelsize=20)
         
         # Plot 6: O2
         ax6 = plt.subplot(gs[2, 1], projection=projection)
@@ -959,19 +960,19 @@ class DataFusion:
         ax6.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
         ax6.coastlines(zorder=101)
         cbar6 = plt.colorbar(im6, ax=ax6, fraction=0.025, pad=0.04)
-        cbar6.set_label('Oxygen (mmol/m$^3$)', fontsize=12)
-        cbar6.ax.tick_params(labelsize=11)
-        ax6.set_xlabel('Longitude', fontsize=12)
-        ax6.set_ylabel('Latitude', fontsize=12)
-        ax6.tick_params(axis='both', labelsize=11)
+        cbar6.set_label('Oxygen (mmol/m$^3$)', fontsize=20)
+        cbar6.ax.tick_params(labelsize=20)
+        ax6.set_xlabel('Longitude', fontsize=20)
+        ax6.set_ylabel('Latitude', fontsize=20)
+        ax6.tick_params(axis='both', labelsize=20)
         
         # Set common gridlines for all subplots
         for ax in [ax1, ax2, ax3, ax4, ax5, ax6]:
             gl = ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False)
             gl.top_labels = False
             gl.right_labels = False
-            gl.xlabel_style = {'size': 11}
-            gl.ylabel_style = {'size': 11}
+            gl.xlabel_style = {'size': 20}
+            gl.ylabel_style = {'size': 20}
         
         plotName = DataFusion.environmentalSaveFig
         plt.savefig(os.path.join(self.outputPath, plotName), dpi=300, bbox_inches='tight')

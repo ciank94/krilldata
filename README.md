@@ -25,6 +25,9 @@ python krilldata/downloadCop.py ssh
 ```
 will download SSH data from Copernicus Marine Service and save to input/ssh.nc
 
+Data visualisation:
+<img src="output/environmentalData.png" width="700" />
+
 ### exploreNC.py
 Command line interface for exploring contents of NetCDF/xarray datasets, requires a NetCDF/xarray dataset as input;
 From the project root directory, run:
