@@ -9,6 +9,7 @@ from sklearn.tree import DecisionTreeRegressor
 from sklearn.svm import SVR
 from sklearn.linear_model import LinearRegression
 from sklearn.neural_network import MLPRegressor
+from sklearn.utils import resample
 from joblib import dump
 import os
 import matplotlib.pyplot as plt
@@ -177,6 +178,8 @@ class KrillTrain:
         self.logger.info(f"Model trained on {len(self.X_train)} training samples and {len(self.X_test)} test samples")
         return
 
+   
+
     def trainModelRandomSearch(self):
         """Run random search over specified parameters for a specified model."""
         self.logger.info(f"Training {self.modelType} model...")
@@ -201,9 +204,38 @@ class KrillTrain:
         self.logger.info(f"Cross-validation scores on full dataset: {cv_scores}")
         return
     
+    def getFeatureImportances(self):
+        """Calculate feature importances for tree-based models."""
+        self.logger.info(f"Calculating feature importances...")
+        if hasattr(self.model, 'feature_importances_'):
+            importances = self.model.feature_importances_
+        elif hasattr(self.model, 'best_estimator_') and hasattr(self.model.best_estimator_, 'feature_importances_'):
+            importances = self.model.best_estimator_.feature_importances_
+        else:
+            self.logger.warning("Model doesn't support feature importances")
+            return None
+            
+        # Create dictionary of feature names and their importances
+        feature_importance_dict = {
+            feature: float(importance) 
+            for feature, importance in zip(KrillTrain.featureColumns, importances)
+        }
+        
+        # Sort by importance
+        sorted_importances = dict(sorted(feature_importance_dict.items(), 
+                                       key=lambda x: x[1], 
+                                       reverse=True))
+        
+        self.logger.info(f"Feature importances: {sorted_importances}")
+        return sorted_importances
+
     def modelMetrics(self):
         """Calculate metrics for the trained model using the best estimator."""
+        if os.path.exists(f"{self.outputPath}/{self.modelType}Metrics.json"):
+            self.logger.info(f"File exists: {self.modelType}Metrics.json")
+            return
         self.logger.info(f"Calculating metrics...")
+        pi_stats = self.uncertaintyEstimation()
         
         # Get predictions using the best estimator
         if self.scenario == "default":
@@ -221,6 +253,9 @@ class KrillTrain:
         self.logger.info(f"MSE: {mse}")
         self.logger.info(f"RMSE: {rmse}")
         self.logger.info(f"Normalised RMSE: {normalised_rmse}")
+       
+        # Get feature importances
+        feature_importances = self.getFeatureImportances()
         
         # Store metrics in a dictionary
         if self.scenario == "default":
@@ -232,7 +267,18 @@ class KrillTrain:
                 'rmse': rmse,
                 'normalised_rmse': normalised_rmse,
                 'cv_results_mean': float(self.model.score(self.X_test, self.y_test)),
-                'timestamp': np.datetime64('now').astype(str)
+                'timestamp': np.datetime64('now').astype(str),
+                'PI_95_lower_mean': pi_stats['lower_mean'],
+                'PI_95_lower_std': pi_stats['lower_std'],
+                'PI_95_lower_min': pi_stats['lower_min'],
+                'PI_95_lower_max': pi_stats['lower_max'],
+                'PI_95_upper_mean': pi_stats['upper_mean'],
+                'PI_95_upper_std': pi_stats['upper_std'],
+                'PI_95_upper_min': pi_stats['upper_min'],
+                'PI_95_upper_max': pi_stats['upper_max'],
+                'PI_95_interval_width_mean': pi_stats['interval_width_mean'],
+                'PI_95_interval_width_std': pi_stats['interval_width_std'],
+                'feature_importances': feature_importances
             }
         else:
             self.metrics = {
@@ -243,11 +289,55 @@ class KrillTrain:
                 'rmse': rmse,
                 'normalised_rmse': normalised_rmse,
                 'cv_results_mean': float(self.model.best_score_),
-                'timestamp': np.datetime64('now').astype(str)
+                'timestamp': np.datetime64('now').astype(str),
+                'PI_95_lower_mean': pi_stats['lower_mean'],
+                'PI_95_lower_std': pi_stats['lower_std'],
+                'PI_95_lower_min': pi_stats['lower_min'],
+                'PI_95_lower_max': pi_stats['lower_max'],
+                'PI_95_upper_mean': pi_stats['upper_mean'],
+                'PI_95_upper_std': pi_stats['upper_std'],
+                'PI_95_upper_min': pi_stats['upper_min'],
+                'PI_95_upper_max': pi_stats['upper_max'],
+                'PI_95_interval_width_mean': pi_stats['interval_width_mean'],
+                'PI_95_interval_width_std': pi_stats['interval_width_std'],
+                'feature_importances': feature_importances
             }
         self.logger.info(f"Stored dictionary of metrics: {self.metrics}")
         return
+
+    def uncertaintyEstimation(self):
+        self.logger.info(f"Estimating uncertainty...")
+        # Number of bootstrap samples
+        n_bootstraps = 100
+        predictions = np.zeros((n_bootstraps, len(self.X_test)))
+
+        # Fit models on bootstrap samples and predict
+        for i in range(n_bootstraps):
+            X_resampled, y_resampled = resample(self.X_train, self.y_train)
+            self.model.fit(X_resampled, y_resampled)
+            predictions[i, :] = self.model.predict(self.X_test)
+            self.logger.info(f"Finished bootstrapping {i+1}/{n_bootstraps}")
+
+        # Calculate prediction intervals
+        y_lower = np.percentile(predictions, 2.5, axis=0)
+        y_upper = np.percentile(predictions, 97.5, axis=0)
         
+        # Calculate summary statistics for the prediction intervals
+        pi_stats = {
+            'lower_mean': float(np.mean(y_lower)),
+            'lower_std': float(np.std(y_lower)),
+            'lower_min': float(np.min(y_lower)),
+            'lower_max': float(np.max(y_lower)),
+            'upper_mean': float(np.mean(y_upper)),
+            'upper_std': float(np.std(y_upper)),
+            'upper_min': float(np.min(y_upper)),
+            'upper_max': float(np.max(y_upper)),
+            'interval_width_mean': float(np.mean(y_upper - y_lower)),
+            'interval_width_std': float(np.std(y_upper - y_lower))
+        }
+        
+        return pi_stats
+
     def saveMetrics(self):
         """Save model metrics to a JSON file."""
         if not hasattr(self, 'metrics'):
@@ -282,12 +372,31 @@ class KrillTrain:
 
     def plotCorrelationMatrix(self, corr_matrix):
         """Plot correlation matrix as a heatmap."""
-        plt.figure(figsize=(12, 10))
-        plt.title('Feature Correlation Matrix')
-        plt.xlabel('Features')
-        plt.ylabel('Features')
+        plt.figure(figsize=(14, 12))
+        plt.xlabel('Variables', fontsize=20)
+        plt.ylabel('Variables', fontsize=20)
         
-        sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0, fmt='.2f')
+        # Create a copy of the correlation matrix to avoid modifying the original
+        corr_matrix_plot = corr_matrix.copy()
+        # Rename both index and columns
+        new_names = {
+            KrillTrain.targetColumn: 'KRILL_DENSITY',
+            'BATHYMETRY': 'DEPTH'  # Using the actual column name instead of index
+        }
+        corr_matrix_plot = corr_matrix_plot.rename(columns=new_names, index=new_names)
+        
+        # Create heatmap with larger fonts
+        heatmap = sns.heatmap(corr_matrix_plot, annot=True, cmap='coolwarm', center=0, fmt='.2f', 
+                             vmin=-1, vmax=1, annot_kws={'size': 14}, 
+                             cbar_kws={'label': 'Correlation Coefficient'})
+        
+        # Increase tick label sizes
+        heatmap.tick_params(labelsize=20)
+        
+        # Set colorbar label size
+        cbar = heatmap.collections[0].colorbar
+        cbar.ax.tick_params(labelsize=20)
+        cbar.set_label('Correlation Coefficient', size=20)
         
         plt.tight_layout()
         plt.savefig(f"{self.outputPath}/{KrillTrain.correlationSaveFig}", dpi=300, bbox_inches='tight')
