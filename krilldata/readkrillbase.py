@@ -24,7 +24,7 @@ class ReadKrillBase:
     defaultLonRange = (-70, -31)
     defaultLatRange = (-73, -50)
     defaultTimeLimits = {
-        'startYear': 1980,
+        'startYear': 1976,
         'endYear': 2016
     }
     
@@ -41,19 +41,23 @@ class ReadKrillBase:
         self.initLogger() 
         if not os.path.exists(os.path.join(self.inputPath, ReadKrillBase.krillFusedDataFilename)):
             self.processData()
+            self.checkPlot()
         else:
             self.logger.info(f"Fused krillbase file already exists, no need to process data")
+            self.fileDataSubset = pd.read_csv(os.path.join(self.inputPath, ReadKrillBase.krillFusedDataFilename))
+            self.fileDataSubset.DATE = pd.to_datetime(self.fileDataSubset.DATE, format='%Y-%m-%d')
+            self.checkPlot()
+        
         return
 
     def processData(self):
         os.makedirs(self.inputPath, exist_ok=True)
-        os.makedirs(self.outputPath, exist_ok=True) 
+        os.makedirs(self.outputPath, exist_ok=True)
         self.variableSubset()
         self.dateSubset()
         self.transformDensities()
         self.geoSubset(lonRange=ReadKrillBase.defaultLonRange, latRange=ReadKrillBase.defaultLatRange)
         self.fileDataSubset.reset_index(drop=True, inplace=True)
-        self.checkPlot()
         self.printDataHead()
         return
 
@@ -143,7 +147,7 @@ class ReadKrillBase:
         
         # Years histogram
         ax2 = fig.add_subplot(gs[0, 1])
-        n2, bins2, _ = ax2.hist(self.fileDataSubset.DATE.dt.year, bins=np.arange(1980, 2017), color=barColor, 
+        n2, bins2, _ = ax2.hist(self.fileDataSubset.DATE.dt.year, bins=np.arange(1976, 2017), color=barColor, 
                                edgecolor='white', alpha=barAlpha, linewidth=1)
         ax2Twin = ax2.twinx()
         ax2Twin.plot(bins2[:-1], np.cumsum(n2)/np.sum(n2)*100, color=lineColor, linewidth=lineWidth)
