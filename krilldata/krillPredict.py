@@ -4,6 +4,9 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import logging
+import matplotlib.pyplot as plt
+import os
+from scipy.stats import gaussian_kde
 
 #todo: predict
 class KrillPredict:
@@ -195,7 +198,6 @@ class KrillPredict:
 
     def plotPredictions(self, time_idx=0, save_path=None):
         """Plot predictions on a map"""
-        import matplotlib.pyplot as plt
         import cartopy.crs as ccrs
         import cartopy.feature as cfeature
         import cmocean
@@ -273,3 +275,218 @@ class KrillPredict:
         
         plt.close()
         return
+
+class ResponseCurves:
+    # logger
+    logging.basicConfig(level=logging.INFO)
+    loggerDescription = "\nResponseCurves class description:\n\
+        generates response curves for each feature while keeping others at their median values\n\
+        calculates uncertainty bands using multiple predictions with sampled feature values\n\
+        plots all response curves with standard deviation bands\n"
+
+    # Define feature columns as class attribute
+    feature_cols = ["YEAR", "LONGITUDE", "LATITUDE", "BATHYMETRY", "SST", \
+                   "SSH", "UGO", "VGO", "NET_VEL", "CHL", "FE", "OXY"]
+    
+    # Define display names for features
+    display_names = {
+        "BATHYMETRY": "DEPTH",
+        # Add any other display name mappings here if needed
+    }
+
+    def __init__(self, inputPath, modelType='rfr', n_points=100, n_samples=50):
+        """
+        Initialize ResponseCurves class to generate and plot model response curves.
+        """
+        self.inputPath = inputPath
+        self.modelType = modelType
+        self.n_points = n_points
+        self.n_samples = n_samples
+        
+        # Load model directly using joblib
+        self.model = load(f"{inputPath}/{modelType}Model.joblib")
+        
+        # Load the fused data and remove any rows with NaN values
+        self.fusedData = pd.read_csv(f"{inputPath}/{KrillPredict.fusedFilename}")
+        self.fusedData = self.fusedData.dropna(subset=self.feature_cols)
+        
+        if len(self.fusedData) == 0:
+            raise ValueError("No valid data remains after removing NaN values")
+        
+        # Initialize logger
+        self.initLogger()
+        
+        # Calculate statistics for each feature
+        self.feature_stats = {}
+        self.logger.info("\nFeature statistics used for predictions:")
+        for col in self.feature_cols:
+            col_data = self.fusedData[col].dropna()
+            self.feature_stats[col] = {
+                'median': col_data.median(),
+                'std': col_data.std(),
+                'min': col_data.min(),
+                'max': col_data.max()
+            }
+            self.logger.info(f"\n{col}:")
+            self.logger.info(f"  Median: {self.feature_stats[col]['median']:.3f}")
+            self.logger.info(f"  Std Dev: {self.feature_stats[col]['std']:.3f}")
+            self.logger.info(f"  Range: [{self.feature_stats[col]['min']:.3f}, {self.feature_stats[col]['max']:.3f}]")
+
+    def initLogger(self):
+        """Initialize the logger for the ResponseCurves class."""
+        self.logger = logging.getLogger("ResponseCurves")
+        self.logger.setLevel(logging.INFO)
+        
+        # Add class description to logger
+        self.logger.info(self.loggerDescription)
+        
+        # Log initialization parameters
+        self.logger.info("\nInitialization parameters:")
+        self.logger.info(f"Input path: {self.inputPath}")
+        self.logger.info(f"Model type: {self.modelType}")
+        self.logger.info(f"Number of evaluation points: {self.n_points}")
+        self.logger.info(f"Number of samples for uncertainty: {self.n_samples}")
+
+    def generate_response_curve(self, feature_name):
+        """
+        Generate response curve for a specific feature while keeping others at median values.
+        
+        Args:
+            feature_name (str): Name of the feature to vary
+            
+        Returns:
+            tuple: (x_values, mean_predictions, std_devs) where x_values are the feature values,
+                  mean_predictions are the mean predictions across samples, and std_devs are the 
+                  standard deviations of predictions at each point
+        """
+        if feature_name not in self.feature_cols:
+            raise ValueError(f"Feature {feature_name} not found in training data")
+        
+        # Drop any NaN values from the feature data before calculating range
+        feature_data = self.fusedData[feature_name].dropna()
+        if len(feature_data) == 0:
+            raise ValueError(f"No valid data points found for feature {feature_name}")
+            
+        # Create array of values to evaluate for the target feature
+        x_values = np.linspace(
+            feature_data.min(),
+            feature_data.max(),
+            self.n_points
+        )
+        
+        # Initialize arrays to store predictions
+        all_predictions = np.zeros((self.n_samples, self.n_points))
+        
+        # Generate multiple predictions with different samples of other features
+        for i in range(self.n_samples):
+            # Create base prediction matrix
+            X_pred = pd.DataFrame(index=range(self.n_points), columns=self.feature_cols)
+            
+            # For each feature, either use the target values or sample from a normal distribution
+            for col in self.feature_cols:
+                col_data = self.fusedData[col].dropna()
+                if len(col_data) == 0:
+                    raise ValueError(f"No valid data points found for feature {col}")
+                    
+                if col == feature_name:
+                    X_pred[col] = x_values
+                else:
+                    # Sample from normal distribution around median with feature's std
+                    sampled_values = np.random.normal(
+                        loc=col_data.median(),
+                        scale=col_data.std() * 0.1,
+                        size=self.n_points
+                    )
+                    # Clip to min/max range
+                    sampled_values = np.clip(
+                        sampled_values,
+                        col_data.min(),
+                        col_data.max()
+                    )
+                    X_pred[col] = sampled_values
+            
+            # Get predictions based on model type
+            if self.modelType == 'rfr':
+                # Random Forest has built-in uncertainty estimation
+                X_pred_array = X_pred.values
+                tree_predictions = np.array([tree.predict(X_pred_array) for tree in self.model.estimators_])
+                if np.isnan(tree_predictions).any():
+                    raise ValueError(f"NaN values in tree predictions at sample {i}")
+                all_predictions[i] = np.mean(tree_predictions, axis=0)
+            else:
+                # For other models (like GBR), just use the model's predict method
+                predictions = self.model.predict(X_pred)
+                if np.isnan(predictions).any():
+                    raise ValueError(f"NaN values in predictions at sample {i}")
+                all_predictions[i] = predictions
+        
+        # Calculate mean and std across samples
+        mean_predictions = np.mean(all_predictions, axis=0)
+        std_devs = np.std(all_predictions, axis=0)
+        
+        return x_values, mean_predictions, std_devs
+
+    def plot_all_response_curves(self, save_path=None):
+        """
+        Create a single figure with subplots for all features showing response curves
+        with standard deviation bands.
+        
+        Args:
+            save_path (str, optional): Path to save the plot. If None, displays the plot.
+        """
+        # Calculate number of rows and columns for subplots
+        n_features = len(self.feature_cols)
+        n_cols = 3  # You can adjust this
+        n_rows = (n_features + n_cols - 1) // n_cols
+        
+        # Create figure and subplots with increased width
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(24, 4*n_rows))  # Increased from 20 to 24
+        
+        # Flatten axes array for easier iteration
+        axes_flat = axes.flatten() if n_rows > 1 or n_cols > 1 else [axes]
+        
+        # Generate and plot response curves for each feature
+        for idx, feature in enumerate(self.feature_cols):
+            ax = axes_flat[idx]
+            x_values, mean_predictions, std_devs = self.generate_response_curve(feature)
+            
+            # Plot mean prediction
+            ax.plot(x_values, mean_predictions, 'b-', label='Mean prediction', linewidth=2)
+            
+            # Plot standard deviation band if available
+            if std_devs is not None:
+                ax.fill_between(x_values, 
+                              mean_predictions - std_devs,
+                              mean_predictions + std_devs,
+                              color='blue', alpha=0.2,
+                              label='±1 std dev')
+            
+            # Use display name if available
+            display_name = self.display_names.get(feature, feature)
+            
+            # Set labels and title with increased font size
+            ax.set_xlabel(display_name, fontsize=20)
+            ax.set_ylabel('Predicted Krill Density', fontsize=20)
+            ax.grid(True)
+            
+            # Increase tick label font size
+            ax.tick_params(axis='both', which='major', labelsize=20)
+            
+            # Add legend
+            ax.legend(fontsize=16, loc='upper right')
+            
+            # Add subplot label (a, b, c, etc.)
+            ax.text(-0.1, 1.1, f'({chr(97+idx)})', transform=ax.transAxes, 
+                   fontsize=24, fontweight='bold')
+        
+        # Remove any empty subplots
+        for idx in range(len(self.feature_cols), len(axes_flat)):
+            fig.delaxes(axes_flat[idx])
+        
+        plt.tight_layout()
+        
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight', dpi=300)
+            plt.close()
+        else:
+            plt.show()
