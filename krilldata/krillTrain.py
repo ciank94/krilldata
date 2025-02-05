@@ -41,8 +41,9 @@ class KrillTrain:
         'nnr': MLPRegressor
     }
 
-    featureColumns = ["YEAR", "LONGITUDE", "LATITUDE", "BATHYMETRY", "SST", \
-    "SSH", "UGO", "VGO", "NET_VEL", "CHL", "FE", "OXY"]
+    # featureColumns = ["YEAR", "LONGITUDE", "LATITUDE", "BATHYMETRY", "SST", \
+    # "SSH", "UGO", "VGO", "NET_VEL", "CHL", "FE", "OXY"]
+    featureColumns = [ "BATHYMETRY", "SST", "FE","SSH", "NET_VEL", "CHL", "YEAR", "LONGITUDE", "LATITUDE"]
     targetColumn = "STANDARDISED_KRILL_UNDER_1M2"
 
     def __init__(self, inputPath, outputPath, modelType, scenario='default'):
@@ -202,6 +203,7 @@ class KrillTrain:
         # Optional: Cross-validation on the entire dataset with the best parameters
         cv_scores = cross_val_score(self.model.best_estimator_, self.X, self.y, cv=5)
         self.logger.info(f"Cross-validation scores on full dataset: {cv_scores}")
+        breakpoint()
         return
     
     def getFeatureImportances(self):
@@ -372,7 +374,7 @@ class KrillTrain:
 
     def plotCorrelationMatrix(self, corr_matrix):
         """Plot correlation matrix as a heatmap."""
-        plt.figure(figsize=(14, 12))
+        plt.figure(figsize=(20, 18))  # Increased size
         plt.xlabel('Variables', fontsize=20)
         plt.ylabel('Variables', fontsize=20)
         
@@ -380,8 +382,11 @@ class KrillTrain:
         corr_matrix_plot = corr_matrix.copy()
         # Rename both index and columns
         new_names = {
-            KrillTrain.targetColumn: 'KRILL_DENSITY',
-            'BATHYMETRY': 'DEPTH'  # Using the actual column name instead of index
+            KrillTrain.targetColumn: 'KRILL',
+            'BATHYMETRY': 'DEPTH',  # Using the actual column name instead of index
+            'LONGITUDE': 'LON',
+            'LATITUDE': 'LAT',
+            'NET_VEL': 'VEL'
         }
         corr_matrix_plot = corr_matrix_plot.rename(columns=new_names, index=new_names)
         

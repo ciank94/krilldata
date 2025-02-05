@@ -285,9 +285,9 @@ class ResponseCurves:
         plots all response curves with standard deviation bands\n"
 
     # Define feature columns as class attribute
-    feature_cols = ["YEAR", "LONGITUDE", "LATITUDE", "BATHYMETRY", "SST", \
-                   "SSH", "UGO", "VGO", "NET_VEL", "CHL", "FE", "OXY"]
-    
+    # feature_cols = ["YEAR", "LONGITUDE", "LATITUDE", "BATHYMETRY", "SST", \
+    #                "SSH", "UGO", "VGO", "NET_VEL", "CHL", "FE", "OXY"]
+    feature_cols = ["BATHYMETRY", "SST", "FE", "SSH", "NET_VEL", "CHL", "YEAR", "LONGITUDE", "LATITUDE"]
     # Define display names for features
     display_names = {
         "BATHYMETRY": "DEPTH",
