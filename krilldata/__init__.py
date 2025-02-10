@@ -1,5 +1,5 @@
 from .readKrillbase import ReadKrillBase
 from .dataFusion import DataFusion
 from .krillTrain import KrillTrain
-from .krillPredict import KrillPredict, ResponseCurves
+from .krillPredict import KrillPredict, ResponseCurves, PerformancePlot
 from .downloadCop import DownloadCop

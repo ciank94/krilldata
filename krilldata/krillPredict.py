@@ -7,6 +7,8 @@ import logging
 import matplotlib.pyplot as plt
 import os
 from scipy.stats import gaussian_kde
+from sklearn.metrics import mean_squared_error
+from krilldata import KrillTrain
 
 #todo: predict
 class KrillPredict:
@@ -349,15 +351,14 @@ class ResponseCurves:
 
     def generate_response_curve(self, feature_name):
         """
-        Generate response curve for a specific feature while keeping others at median values.
+        Generate response curve for a specific feature while keeping others at their median values.
         
         Args:
             feature_name (str): Name of the feature to vary
             
         Returns:
-            tuple: (x_values, mean_predictions, std_devs) where x_values are the feature values,
-                  mean_predictions are the mean predictions across samples, and std_devs are the 
-                  standard deviations of predictions at each point
+            tuple: (x_values, predictions) where x_values are the feature values
+                  and predictions are the model predictions
         """
         if feature_name not in self.feature_cols:
             raise ValueError(f"Feature {feature_name} not found in training data")
@@ -374,119 +375,195 @@ class ResponseCurves:
             self.n_points
         )
         
-        # Initialize arrays to store predictions
-        all_predictions = np.zeros((self.n_samples, self.n_points))
+        # Create prediction matrix with median values
+        X_pred = pd.DataFrame(index=range(self.n_points), columns=self.feature_cols)
         
-        # Generate multiple predictions with different samples of other features
-        for i in range(self.n_samples):
-            # Create base prediction matrix
-            X_pred = pd.DataFrame(index=range(self.n_points), columns=self.feature_cols)
-            
-            # For each feature, either use the target values or sample from a normal distribution
-            for col in self.feature_cols:
-                col_data = self.fusedData[col].dropna()
-                if len(col_data) == 0:
-                    raise ValueError(f"No valid data points found for feature {col}")
-                    
-                if col == feature_name:
-                    X_pred[col] = x_values
-                else:
-                    # Sample from normal distribution around median with feature's std
-                    sampled_values = np.random.normal(
-                        loc=col_data.median(),
-                        scale=col_data.std() * 0.1,
-                        size=self.n_points
-                    )
-                    # Clip to min/max range
-                    sampled_values = np.clip(
-                        sampled_values,
-                        col_data.min(),
-                        col_data.max()
-                    )
-                    X_pred[col] = sampled_values
-            
-            # Get predictions based on model type
-            if self.modelType == 'rfr':
-                # Random Forest has built-in uncertainty estimation
-                X_pred_array = X_pred.values
-                tree_predictions = np.array([tree.predict(X_pred_array) for tree in self.model.estimators_])
-                if np.isnan(tree_predictions).any():
-                    raise ValueError(f"NaN values in tree predictions at sample {i}")
-                all_predictions[i] = np.mean(tree_predictions, axis=0)
+        # For each feature, either use the target values or median
+        for col in self.feature_cols:
+            col_data = self.fusedData[col].dropna()
+            if len(col_data) == 0:
+                raise ValueError(f"No valid data points found for feature {col}")
+                
+            if col == feature_name:
+                X_pred[col] = x_values
             else:
-                # For other models (like GBR), just use the model's predict method
-                predictions = self.model.predict(X_pred)
-                if np.isnan(predictions).any():
-                    raise ValueError(f"NaN values in predictions at sample {i}")
-                all_predictions[i] = predictions
+                X_pred[col] = np.full(self.n_points, col_data.median())
         
-        # Calculate mean and std across samples
-        mean_predictions = np.mean(all_predictions, axis=0)
-        std_devs = np.std(all_predictions, axis=0)
+        # Standardize features using statistics from original data
+        for col in X_pred.columns:
+            col_data = self.fusedData[col].dropna()
+            X_pred[col] = (X_pred[col] - col_data.mean()) / (col_data.std() + 0.00001)
         
-        return x_values, mean_predictions, std_devs
+        # Make predictions
+        predictions = self.model.predict(X_pred)
+        
+        return x_values, predictions
 
     def plot_all_response_curves(self, save_path=None):
         """
-        Create a single figure with subplots for all features showing response curves
-        with standard deviation bands.
+        Create a single figure with subplots for all features showing response curves.
         
         Args:
             save_path (str, optional): Path to save the plot. If None, displays the plot.
         """
-        # Calculate number of rows and columns for subplots
+        # Set default font sizes
+        plt.rcParams.update({'font.size': 14})
+        
+        # Create figure with subplots
         n_features = len(self.feature_cols)
-        n_cols = 3  # You can adjust this
+        n_cols = 3
         n_rows = (n_features + n_cols - 1) // n_cols
-        
-        # Create figure and subplots with increased width
-        fig, axes = plt.subplots(n_rows, n_cols, figsize=(24, 4*n_rows))  # Increased from 20 to 24
-        
-        # Flatten axes array for easier iteration
-        axes_flat = axes.flatten() if n_rows > 1 or n_cols > 1 else [axes]
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(24, 7*n_rows))
+        axes = axes.flatten()
         
         # Generate and plot response curves for each feature
-        for idx, feature in enumerate(self.feature_cols):
-            ax = axes_flat[idx]
-            x_values, mean_predictions, std_devs = self.generate_response_curve(feature)
+        for i, feature in enumerate(self.feature_cols):
+            x_values, predictions = self.generate_response_curve(feature)
             
-            # Plot mean prediction
-            ax.plot(x_values, mean_predictions, 'b-', label='Mean prediction', linewidth=2)
-            
-            # Plot standard deviation band if available
-            if std_devs is not None:
-                ax.fill_between(x_values, 
-                              mean_predictions - std_devs,
-                              mean_predictions + std_devs,
-                              color='blue', alpha=0.2,
-                              label='±1 std dev')
-            
-            # Use display name if available
+            # Get display name if available, otherwise use feature name
             display_name = self.display_names.get(feature, feature)
             
-            # Set labels and title with increased font size
-            ax.set_xlabel(display_name, fontsize=20)
-            ax.set_ylabel('Predicted Krill Density', fontsize=20)
-            ax.grid(True)
+            # Plot response curve
+            axes[i].plot(x_values, predictions, 'b-', linewidth=2)
+            axes[i].set_xlabel(display_name, fontsize=16)
+            axes[i].set_ylabel('Predicted Krill Density', fontsize=16)
+            axes[i].tick_params(axis='both', which='major', labelsize=14)
+            axes[i].grid(True, alpha=0.3)
             
-            # Increase tick label font size
-            ax.tick_params(axis='both', which='major', labelsize=20)
-            
-            # Add legend
-            ax.legend(fontsize=16, loc='upper right')
-            
-            # Add subplot label (a, b, c, etc.)
-            ax.text(-0.1, 1.1, f'({chr(97+idx)})', transform=ax.transAxes, 
-                   fontsize=24, fontweight='bold')
+            # Rotate x-axis labels if they're too long
+            if len(str(max(x_values))) > 6:
+                axes[i].tick_params(axis='x', rotation=45)
         
-        # Remove any empty subplots
-        for idx in range(len(self.feature_cols), len(axes_flat)):
-            fig.delaxes(axes_flat[idx])
+        # Remove empty subplots
+        for i in range(n_features, len(axes)):
+            fig.delaxes(axes[i])
         
-        plt.tight_layout()
+        # Adjust layout with more space
+        plt.tight_layout(h_pad=0.5, w_pad=0.5)
         
+        # Save or show the plot
         if save_path:
             plt.savefig(save_path, bbox_inches='tight', dpi=300)
             plt.close()
         else:
             plt.show()
+        return
+
+class PerformancePlot:
+    """Class for creating prediction vs observation plots"""
+    
+    loggerDescription = "\nPerformancePlot class description:\n\
+        loads model predictions and observations from fused data\n\
+        creates scatter plot of predicted vs observed values\n\
+        calculates performance metrics (R², RMSE)\n\
+        adds uncertainty bands using density estimation\n"
+    
+    def __init__(self, inputPath, modelType='rfr'):
+        """
+        Initialize PerformancePlot class to generate prediction vs observation plots.
+        
+        Args:
+            inputPath (str): Path to the directory containing the model and data
+            modelType (str): Type of model to evaluate (default: 'rfr')
+        """
+        self.inputPath = inputPath
+        self.modelType = modelType
+        
+        # Load model directly using joblib
+        self.model = load(f"{inputPath}/{modelType}Model.joblib")
+        
+        # Load the fused data and remove any rows with NaN values
+        self.fusedData = pd.read_csv(f"{inputPath}/{KrillPredict.fusedFilename}")
+        self.fusedData = self.fusedData.dropna(subset=KrillTrain.featureColumns + ["STANDARDISED_KRILL_UNDER_1M2"])
+        
+        if len(self.fusedData) == 0:
+            raise ValueError("No valid data remains after removing NaN values")
+        
+        # Initialize logger
+        self.initLogger()
+        
+        # Prepare data
+        self.X = self.fusedData[KrillTrain.featureColumns]
+        self.y_true = self.fusedData["STANDARDISED_KRILL_UNDER_1M2"]
+        
+        # Standardize features
+        self.logger.info("Standardizing features...")
+        for col in self.X.columns:
+            self.X[col] = (self.X[col] - self.X[col].mean()) / (self.X[col].std() + 0.00001)
+        
+        # Make predictions with standardized features
+        self.y_pred = self.model.predict(self.X)
+        
+        # Calculate performance metrics
+        self.r2 = np.corrcoef(self.y_true, self.y_pred)[0,1]**2
+        self.rmse = np.sqrt(mean_squared_error(self.y_true, self.y_pred))
+        
+        self.logger.info(f"\nModel Performance Metrics:")
+        self.logger.info(f"  R²: {self.r2:.3f}")
+        self.logger.info(f"  RMSE: {self.rmse:.3f}")
+    
+    def initLogger(self):
+        """Initialize the logger for the PerformancePlot class."""
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.info(f"================={self.__class__.__name__}=====================")
+        self.logger.info(f"{PerformancePlot.loggerDescription}")
+        return
+    
+    def plot_performance(self, save_path=None):
+        """
+        Create a scatter plot of predicted vs observed values with density estimation.
+        
+        Args:
+            save_path (str, optional): Path to save the plot. If None, displays the plot.
+        """
+        # Convert to numpy arrays
+        y_true_np = self.y_true.to_numpy()
+        y_pred_np = self.y_pred
+        
+        # Log data statistics
+        self.logger.info(f"\nData statistics:")
+        self.logger.info(f"  Number of points: {len(y_true_np)}")
+        self.logger.info(f"  True range: [{y_true_np.min():.3f}, {y_true_np.max():.3f}]")
+        self.logger.info(f"  Predicted range: [{y_pred_np.min():.3f}, {y_pred_np.max():.3f}]")
+        
+        # Create figure
+        plt.figure(figsize=(10, 8))
+        
+        # Calculate point density for coloring
+        xy = np.vstack([y_true_np, y_pred_np])
+        z = gaussian_kde(xy)(xy)
+        
+        # Sort points by density for better visualization
+        idx = z.argsort()
+        x, y, z = y_true_np[idx], y_pred_np[idx], z[idx]
+        
+        # Create scatter plot colored by density
+        scatter = plt.scatter(x, y, c=z, s=50, alpha=0.5, cmap='viridis')
+        plt.colorbar(scatter, label='Point density')
+        
+        # Add perfect prediction line
+        min_val = min(min(y_true_np), min(y_pred_np))
+        max_val = max(max(y_true_np), max(y_pred_np))
+        plt.plot([min_val, max_val], [min_val, max_val], 'r--', 
+                label=f'Perfect prediction\nR² = {self.r2:.3f}\nRMSE = {self.rmse:.3f}')
+        
+        # Add labels and title
+        plt.xlabel('Observed log10(Krill density)')
+        plt.ylabel('Predicted log10(Krill density)')
+        plt.title('Predicted vs Observed Krill Density')
+        plt.legend()
+        
+        # Add grid
+        plt.grid(True, alpha=0.3)
+        
+        # Equal aspect ratio
+        plt.axis('equal')
+        
+        # Save or show the plot
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            self.logger.info(f"Saved performance plot to: {save_path}")
+            plt.close()
+        else:
+            plt.show()
+        return
