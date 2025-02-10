@@ -303,7 +303,7 @@ class DataFusion:
             for idx in pre_1997_indices:
                 lat = self.krillData.loc[idx, "LATITUDE"]
                 lon = self.krillData.loc[idx, "LONGITUDE"]
-                
+
                 # Define spatial window (±2 degrees)
                 lat_window = 2.0
                 lon_window = 2.0
@@ -859,15 +859,18 @@ class DataFusion:
         chl_time_idx = np.where((chlDataset.time.dt.year == 2016) & (chlDataset.time.dt.month == 1))[0][0]
         chl_data = chlDataset["CHL"][chl_time_idx].values
         
-        # Load OXY data
-        oxygenDataset = xr.open_dataset(self.oxyPath)
-        o2_time_idx = np.where((oxygenDataset.time.dt.year == 2016) & (oxygenDataset.time.dt.month == 1))[0][0]
-        o2_data = oxygenDataset["o2"][o2_time_idx, 0].values  # Select the first depth level (depth=0)
+        # Load Iron data
+        ironDataset = xr.open_dataset(self.ironPath)
+        iron_time_idx = np.where((ironDataset.time.dt.year == 2016) & (ironDataset.time.dt.month == 1))[0][0]
+        iron_data = ironDataset["fe"][iron_time_idx, 0].values  # Select the first depth level (depth=0)
         
         # Create masked array for bathymetry where elevation <= 0
         bathymetry = abs(bathymetryDataset.elevation.values)
         # Mask both land (elevation > 0) and invalid points
         masked_bathymetry = np.ma.masked_where((bathymetry <= 0) | (bathymetry > 10000), bathymetry)
+        
+        # Create contour levels every 500m
+        contour_levels = np.arange(0, 3000, 400)
         
         # Create figure with 3x2 subplots
         plt.rcParams.update({'font.size': 20})  # Set default font size to 20
@@ -894,12 +897,16 @@ class DataFusion:
         ax1.set_xlabel('Longitude', fontsize=20)
         ax1.set_ylabel('Latitude', fontsize=20)
         ax1.tick_params(axis='both', labelsize=20)
-        
+        cs1 = ax1.contour(bathymetryDataset.lon, bathymetryDataset.lat, 
+                       masked_bathymetry, levels=contour_levels,
+                       colors='grey', alpha=0.3, transform=projection)
+        self.logger.info("Completed bathymetry subplot (1/6)")
+
         # Plot 2: SST
         ax2 = plt.subplot(gs[0, 1], projection=projection)
         im2 = ax2.pcolormesh(sstDataset.longitude, sstDataset.latitude, 
                           sst_data, shading='auto',
-                          cmap=cmocean.cm.thermal, transform=projection, zorder=1)
+                          cmap=cmocean.cm.thermal, transform=projection)
         ax2.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
         ax2.coastlines(zorder=101)
         cbar2 = plt.colorbar(im2, ax=ax2, fraction=0.025, pad=0.04)
@@ -908,12 +915,16 @@ class DataFusion:
         ax2.set_xlabel('Longitude', fontsize=20)
         ax2.set_ylabel('Latitude', fontsize=20)
         ax2.tick_params(axis='both', labelsize=20)
-        
+        cs2 = ax2.contour(bathymetryDataset.lon, bathymetryDataset.lat, 
+                       masked_bathymetry, levels=contour_levels,
+                       colors='grey', alpha=0.3, transform=projection)
+        self.logger.info("Completed SST subplot (2/6)")
+
         # Plot 3: SSH
         ax3 = plt.subplot(gs[1, 0], projection=projection)
         im3 = ax3.pcolormesh(sshDataset.longitude, sshDataset.latitude, 
                           ssh_data, shading='auto',
-                          cmap=cmocean.cm.balance, transform=projection, zorder=1)
+                          cmap=cmocean.cm.balance, transform=projection)
         ax3.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
         ax3.coastlines(zorder=101)
         cbar3 = plt.colorbar(im3, ax=ax3, fraction=0.025, pad=0.04)
@@ -922,12 +933,16 @@ class DataFusion:
         ax3.set_xlabel('Longitude', fontsize=20)
         ax3.set_ylabel('Latitude', fontsize=20)
         ax3.tick_params(axis='both', labelsize=20)
-        
-        # Plot 4: NET_VEL
+        cs3 = ax3.contour(bathymetryDataset.lon, bathymetryDataset.lat, 
+                       masked_bathymetry, levels=contour_levels,
+                       colors='grey', alpha=0.3, transform=projection)
+        self.logger.info("Completed SSH subplot (3/6)")
+
+        # Plot 4: Net velocity
         ax4 = plt.subplot(gs[1, 1], projection=projection)
         im4 = ax4.pcolormesh(sshDataset.longitude, sshDataset.latitude, 
                           net_vel_data, shading='auto',
-                          cmap=cmocean.cm.speed, transform=projection, zorder=1)
+                          cmap=cmocean.cm.speed, transform=projection)
         ax4.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
         ax4.coastlines(zorder=101)
         cbar4 = plt.colorbar(im4, ax=ax4, fraction=0.025, pad=0.04)
@@ -936,6 +951,10 @@ class DataFusion:
         ax4.set_xlabel('Longitude', fontsize=20)
         ax4.set_ylabel('Latitude', fontsize=20)
         ax4.tick_params(axis='both', labelsize=20)
+        cs4 = ax4.contour(bathymetryDataset.lon, bathymetryDataset.lat, 
+                       masked_bathymetry, levels=contour_levels,
+                       colors='grey', alpha=0.3, transform=projection)
+        self.logger.info("Completed velocity subplot (4/6)")
 
         # Plot 5: CHL
         ax5 = plt.subplot(gs[2, 0], projection=projection)
@@ -951,21 +970,30 @@ class DataFusion:
         ax5.set_xlabel('Longitude', fontsize=20)
         ax5.set_ylabel('Latitude', fontsize=20)
         ax5.tick_params(axis='both', labelsize=20)
-        
-        # Plot 6: O2
+        cs5 = ax5.contour(bathymetryDataset.lon, bathymetryDataset.lat, 
+                       masked_bathymetry, levels=contour_levels,
+                       colors='grey', alpha=0.3, transform=projection)
+        self.logger.info("Completed chlorophyll subplot (5/6)")
+
+        # Plot 6: Iron
         ax6 = plt.subplot(gs[2, 1], projection=projection)
-        im6 = ax6.pcolormesh(oxygenDataset.longitude, oxygenDataset.latitude, 
-                          o2_data, shading='auto',
-                          cmap=cmocean.cm.deep, transform=projection, zorder=1)  # Changed to deep colormap
+        im6 = ax6.pcolormesh(ironDataset.longitude, ironDataset.latitude, 
+                          iron_data, shading='auto',
+                          cmap=cmocean.cm.matter, transform=projection, zorder=1)
+        im6.set_clim(0, 0.001)  # Set color limits on the plot object
         ax6.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
         ax6.coastlines(zorder=101)
         cbar6 = plt.colorbar(im6, ax=ax6, fraction=0.025, pad=0.04)
-        cbar6.set_label('Oxygen (mmol/m$^3$)', fontsize=20)
+        cbar6.set_label('Iron (mmol/m$^3$)', fontsize=20)
         cbar6.ax.tick_params(labelsize=20)
         ax6.set_xlabel('Longitude', fontsize=20)
         ax6.set_ylabel('Latitude', fontsize=20)
         ax6.tick_params(axis='both', labelsize=20)
-        
+        cs6 = ax6.contour(bathymetryDataset.lon, bathymetryDataset.lat, 
+                       masked_bathymetry, levels=contour_levels,
+                       colors='grey', alpha=0.3, transform=projection)
+        self.logger.info("Completed iron subplot (6/6)")
+
         # Set common gridlines for all subplots
         for ax in [ax1, ax2, ax3, ax4, ax5, ax6]:
             gl = ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False)
@@ -982,7 +1010,7 @@ class DataFusion:
         sstDataset.close()
         sshDataset.close()
         chlDataset.close()
-        oxygenDataset.close()
+        ironDataset.close()
         
         self.logger.info(f"Saved environmental data plot to: {plotName}")
         return
