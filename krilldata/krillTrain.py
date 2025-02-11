@@ -69,6 +69,8 @@ class KrillTrain:
         #====Class Methods====
         self.initLogger()
         self.checkModelExists()
+        self.readData()
+        self.describeData()
         if not self.model_exists:
             self.preprocess()
             self.training()
@@ -86,8 +88,7 @@ class KrillTrain:
 
     def preprocess(self):
         #====Preprocess====
-        self.readData()
-        self.describeData()
+        
         self.scaleFeatures()
         self.handleNan()
         self.loadXy()
@@ -374,41 +375,65 @@ class KrillTrain:
 
     def plotCorrelationMatrix(self, corr_matrix):
         """Plot correlation matrix as a heatmap."""
-        plt.figure(figsize=(20, 18))  # Increased size
-        plt.xlabel('Variables', fontsize=20)
-        plt.ylabel('Variables', fontsize=20)
+        # Set the style for better visibility
+        plt.style.use('default')
         
-        # Create a copy of the correlation matrix to avoid modifying the original
+        # Create figure with adjusted size and white background
+        plt.figure(figsize=(14, 12), facecolor='white')
+        
+        # Create a copy of the correlation matrix
         corr_matrix_plot = corr_matrix.copy()
-        # Rename both index and columns
+        
+        # Rename columns and index for better readability
         new_names = {
             KrillTrain.targetColumn: 'KRILL',
-            'BATHYMETRY': 'DEPTH',  # Using the actual column name instead of index
+            'BATHYMETRY': 'DEPTH',
             'LONGITUDE': 'LON',
             'LATITUDE': 'LAT',
             'NET_VEL': 'VEL'
         }
         corr_matrix_plot = corr_matrix_plot.rename(columns=new_names, index=new_names)
         
-        # Create heatmap with larger fonts
-        heatmap = sns.heatmap(corr_matrix_plot, annot=True, cmap='coolwarm', center=0, fmt='.2f', 
-                             vmin=-1, vmax=1, annot_kws={'size': 14}, 
-                             cbar_kws={'label': 'Correlation Coefficient'})
+        # Create heatmap with improved styling
+        heatmap = sns.heatmap(corr_matrix_plot, 
+                             annot=True,
+                             cmap='RdBu_r',
+                             center=0,
+                             fmt='.2f',
+                             vmin=-1,
+                             vmax=1,
+                             square=True,
+                             annot_kws={'size': 14},  
+                             cbar_kws={'label': 'Correlation Coefficient',
+                                     'orientation': 'vertical',
+                                     'pad': 0.05})  
         
-        # Increase tick label sizes
-        heatmap.tick_params(labelsize=20)
+        # Rotate x-axis labels
+        plt.xticks(rotation=45, ha='right')
+        plt.yticks(rotation=0)
         
-        # Set colorbar label size
+        # Adjust label sizes
+        heatmap.set_xticklabels(heatmap.get_xticklabels(), size=14)  
+        heatmap.set_yticklabels(heatmap.get_yticklabels(), size=14)  
+        
+        # Add title
+        # plt.title('Feature Correlation Matrix', pad=20, size=16, weight='bold')  
+        
+        # Adjust colorbar
         cbar = heatmap.collections[0].colorbar
-        cbar.ax.tick_params(labelsize=20)
-        cbar.set_label('Correlation Coefficient', size=20)
+        cbar.ax.tick_params(labelsize=12)  
+        cbar.set_label('Correlation Coefficient', size=14, weight='bold')  
         
-        plt.tight_layout()
-        plt.savefig(f"{self.outputPath}/{KrillTrain.correlationSaveFig}", dpi=300, bbox_inches='tight')
+        # Add more space at the bottom for x-labels
+        plt.subplots_adjust(bottom=0.15)
+        
+        # Save figure
+        plt.savefig(f"{self.outputPath}/{KrillTrain.correlationSaveFig}", 
+                    dpi=300, 
+                    bbox_inches='tight',
+                    facecolor='white',
+                    edgecolor='none')
         plt.close()
         
         self.logger.info(f"Saved correlation matrix plot to: {KrillTrain.correlationSaveFig}")
-        self.logger.info(f"Dataset correlation matrix:\n {corr_matrix}")
-        self.logger.info(f"Correlation with target column: {KrillTrain.targetColumn}: \n \
-            {corr_matrix[KrillTrain.targetColumn].sort_values(ascending=False)}")
         return
