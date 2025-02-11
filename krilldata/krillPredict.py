@@ -375,29 +375,41 @@ class ResponseCurves:
             self.n_points
         )
         
-        # Create prediction matrix with median values
-        X_pred = pd.DataFrame(index=range(self.n_points), columns=self.feature_cols)
+        # Number of Monte Carlo iterations
+        n_iterations = 100
+        predictions = np.zeros((n_iterations, self.n_points))
         
-        # For each feature, either use the target values or median
-        for col in self.feature_cols:
-            col_data = self.fusedData[col].dropna()
-            if len(col_data) == 0:
-                raise ValueError(f"No valid data points found for feature {col}")
+        # For each iteration, sample from the distribution of other features
+        for i in range(n_iterations):
+            X_pred = pd.DataFrame(index=range(self.n_points), columns=self.feature_cols)
+            
+            # For each feature, either use the target values or random sample
+            for col in self.feature_cols:
+                col_data = self.fusedData[col].dropna()
+                if len(col_data) == 0:
+                    raise ValueError(f"No valid data points found for feature {col}")
                 
-            if col == feature_name:
-                X_pred[col] = x_values
-            else:
-                X_pred[col] = np.full(self.n_points, col_data.median())
+                if col == feature_name:
+                    X_pred[col] = x_values
+                else:
+                    # Sample random values from the feature distribution
+                    X_pred[col] = np.random.choice(col_data, size=self.n_points)
+            
+            # Make predictions for this iteration
+            predictions[i, :] = self.model.predict(X_pred)
         
-        # Standardize features using statistics from original data
-        for col in X_pred.columns:
-            col_data = self.fusedData[col].dropna()
-            X_pred[col] = (X_pred[col] - col_data.mean()) / (col_data.std() + 0.00001)
+        # Calculate mean and standard deviation of predictions
+        mean_pred = np.mean(predictions, axis=0)
+        std_pred = np.std(predictions, axis=0)
         
-        # Make predictions
-        predictions = self.model.predict(X_pred)
-        
-        return x_values, predictions
+        # Store results for plotting
+        self.response_data = {
+            'x_values': x_values,
+            'mean': mean_pred,
+            'lower': mean_pred - 2*std_pred,  # 95% confidence interval
+            'upper': mean_pred + 2*std_pred
+        }
+        return self.response_data
 
     def plot_all_response_curves(self, save_path=None):
         """
@@ -418,20 +430,21 @@ class ResponseCurves:
         
         # Generate and plot response curves for each feature
         for i, feature in enumerate(self.feature_cols):
-            x_values, predictions = self.generate_response_curve(feature)
+            response_data = self.generate_response_curve(feature)
             
             # Get display name if available, otherwise use feature name
             display_name = self.display_names.get(feature, feature)
             
             # Plot response curve
-            axes[i].plot(x_values, predictions, 'b-', linewidth=2)
+            axes[i].plot(response_data['x_values'], response_data['mean'], 'b-', linewidth=2)
+            axes[i].fill_between(response_data['x_values'], response_data['lower'], response_data['upper'], alpha=0.3, color='b')
             axes[i].set_xlabel(display_name, fontsize=16)
             axes[i].set_ylabel('Predicted Krill Density', fontsize=16)
             axes[i].tick_params(axis='both', which='major', labelsize=14)
             axes[i].grid(True, alpha=0.3)
             
             # Rotate x-axis labels if they're too long
-            if len(str(max(x_values))) > 6:
+            if len(str(max(response_data['x_values']))) > 6:
                 axes[i].tick_params(axis='x', rotation=45)
         
         # Remove empty subplots
@@ -538,14 +551,16 @@ class PerformancePlot:
         x, y, z = y_true_np[idx], y_pred_np[idx], z[idx]
         
         # Create scatter plot colored by density
-        scatter = plt.scatter(x, y, c=z, s=50, alpha=0.5, cmap='viridis')
+        scatter = plt.scatter(x, y, c=z, s=50, alpha=0.5, cmap='inferno')
         plt.colorbar(scatter, label='Point density')
         
         # Add perfect prediction line
         min_val = min(min(y_true_np), min(y_pred_np))
         max_val = max(max(y_true_np), max(y_pred_np))
-        plt.plot([min_val, max_val], [min_val, max_val], 'r--', 
-                label=f'Perfect prediction\nR² = {self.r2:.3f}\nRMSE = {self.rmse:.3f}')
+        
+        # Plot 1:1 line and add empty line for stats
+        plt.plot([min_val, max_val], [min_val, max_val], 'r--', label='1:1')
+        plt.plot([], [], ' ', label=f'R² = {self.r2:.3f}\nRMSE = {self.rmse:.3f}')
         
         # Add labels and title
         plt.xlabel('Observed log10(Krill density)')
