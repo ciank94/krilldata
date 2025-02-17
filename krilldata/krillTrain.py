@@ -43,7 +43,7 @@ class KrillTrain:
 
     # featureColumns = ["YEAR", "LONGITUDE", "LATITUDE", "BATHYMETRY", "SST", \
     # "SSH", "UGO", "VGO", "NET_VEL", "CHL", "FE", "OXY"]
-    featureColumns = [ "BATHYMETRY", "SST", "FE","SSH", "NET_VEL", "CHL", "YEAR", "LONGITUDE", "LATITUDE"]
+    featureColumns = ["BATHYMETRY", "SST", "FE","SSH", "NET_VEL", "CHL", "YEAR", "LONGITUDE", "LATITUDE"]
     targetColumn = "STANDARDISED_KRILL_UNDER_1M2"
 
     def __init__(self, inputPath, outputPath, modelType, scenario='default'):

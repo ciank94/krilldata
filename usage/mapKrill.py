@@ -12,4 +12,4 @@ modelType = "rfr"
 #KrillPredict(inputPath, outputPath, modelType, scenario='peninsula')
 
 # South Georgia prediction
-KrillPredict(inputPath, outputPath, modelType, scenario='southgeorgia')
+KrillPredict(inputPath, outputPath, modelType, scenario='southGeorgia')

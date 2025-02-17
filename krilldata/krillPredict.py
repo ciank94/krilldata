@@ -22,7 +22,11 @@ class KrillPredict:
     bathymetryFilename = "bathymetry.nc"
     sstFilename = "sst.nc"
     sshFilename = "ssh.nc"
+    chlFilename = "chl.nc"
+    ironFilename = "iron.nc"
     fusedFilename = "krillFusedData.csv"
+    featureColumns = ["BATHYMETRY", "SST", "FE","SSH", "NET_VEL", "CHL", "YEAR", "LONGITUDE", "LATITUDE"]
+    targetColumn = "STANDARDISED_KRILL_UNDER_1M2"
 
     def __init__(self, inputPath, outputPath, modelType, scenario='southGeorgia'):
         # Instance variables
@@ -51,7 +55,7 @@ class KrillPredict:
 
     def loadParameters(self):
         """Load map parameters from JSON file"""
-        with open("krilldata/map_params.json", "r") as f:
+        with open("config/map_params.json", "r") as f:
             params = json.load(f)
         return params[self.scenario]
 
@@ -64,6 +68,8 @@ class KrillPredict:
         bathymetry_ds = xr.open_dataset(f"{self.inputPath}/{KrillPredict.bathymetryFilename}")
         sst_ds = xr.open_dataset(f"{self.inputPath}/{KrillPredict.sstFilename}")
         ssh_ds = xr.open_dataset(f"{self.inputPath}/{KrillPredict.sshFilename}")
+        chl_ds = xr.open_dataset(f"{self.inputPath}/{KrillPredict.chlFilename}")
+        iron_ds = xr.open_dataset(f"{self.inputPath}/{KrillPredict.ironFilename}")
         
         # Create feature matrix
         n_points = len(lon_grid.flatten())
@@ -88,6 +94,16 @@ class KrillPredict:
         lon_ssh = ssh_ds["longitude"].data
         time_ssh = ssh_ds["time"].data
 
+        # Find nearest CHL points
+        lat_chl = chl_ds["latitude"].data
+        lon_chl = chl_ds["longitude"].data
+        time_chl = chl_ds["time"].data
+
+        # Find nearest iron points
+        lat_iron = iron_ds["latitude"].data
+        lon_iron = iron_ds["longitude"].data
+        time_iron = iron_ds["time"].data
+
         
         # For each time point
         self.logger.info(f"Creating feature matrix")
@@ -97,6 +113,12 @@ class KrillPredict:
 
             # Find nearest SSH time index
             t_ssh_idx = np.abs(time_ssh - np.datetime64(t)).argmin()
+
+            # Find nearest CHL time index
+            t_chl_idx = np.abs(time_chl - np.datetime64(t)).argmin()
+
+            # Find nearest iron time index
+            t_iron_idx = np.abs(time_iron - np.datetime64(t)).argmin()
             
             # Base index for this time slice
             base_idx = t_idx * n_points
@@ -107,26 +129,27 @@ class KrillPredict:
             
             
             # Fill in coordinates for non-Weddell Sea points
-            X[base_idx:base_idx + n_points, 0] = np.full(n_points, t.year)
-            X[base_idx:base_idx + n_points, 1] = lons_flat
-            X[base_idx:base_idx + n_points, 2] = lats_flat
+            # Bathymetry (constant across time)
+            X[base_idx:base_idx + n_points, 6] = np.full(n_points, t.year)
+            X[base_idx:base_idx + n_points, 7] = lons_flat
+            X[base_idx:base_idx + n_points, 8] = lats_flat
             
             # Find nearest bathymetry and SST values
             for i, (lat, lon) in enumerate(zip(lats_flat, lons_flat)):
                 if not weddell_mask[i]:
-                    X[base_idx + i, 3] = np.nan
+                    X[base_idx + i, 0] = np.nan
                     continue
 
                 # Bathymetry (constant across time)
                 lat_idx = np.abs(lat_bath - lat).argmin()
                 lon_idx = np.abs(lon_bath - lon).argmin()
-                X[base_idx + i, 3] = abs(bathymetry_ds["elevation"][lat_idx, lon_idx].data)
+                X[base_idx + i, 0] = abs(bathymetry_ds["elevation"][lat_idx, lon_idx].data)
                 
                 # SST values
                 lat_idx = np.abs(lat_sst - lat).argmin()
                 lon_idx = np.abs(lon_sst - lon).argmin()
                 init_val = sst_ds["analysed_sst"][t_sst_idx, lat_idx, lon_idx].data
-                X[base_idx + i, 4] = init_val - 273.15
+                X[base_idx + i, 1] = init_val - 273.15
 
                 #SSH values
                 lat_idx = np.abs(lat_ssh - lat).argmin()
@@ -136,10 +159,18 @@ class KrillPredict:
                 vgeo_val = ssh_ds["vgos"][t_ssh_idx, lat_idx, lon_idx].data
                 net_vel_val = np.sqrt(ugeo_val**2 + vgeo_val**2)
 
-                X[base_idx + i, 5] = ssh_val
-                X[base_idx + i, 6] = ugeo_val
-                X[base_idx + i, 7] = vgeo_val
-                X[base_idx + i, 8] = net_vel_val
+                X[base_idx + i, 4] = ssh_val
+                X[base_idx + i, 5] = net_vel_val
+
+                # CHL values
+                lat_idx = np.abs(lat_chl - lat).argmin()
+                lon_idx = np.abs(lon_chl - lon).argmin()
+                X[base_idx + i, 2] = chl_ds["CHL"][t_chl_idx, lat_idx, lon_idx].data
+
+                # Iron values
+                lat_idx = np.abs(lat_iron - lat).argmin()
+                lon_idx = np.abs(lon_iron - lon).argmin()
+                X[base_idx + i, 3] = iron_ds["fe"][t_iron_idx, 0, lat_idx, lon_idx].data
 
         self.logger.info(f"Finished creating feature matrix")
         
@@ -150,7 +181,7 @@ class KrillPredict:
         # Convert to DataFrame with feature names matching training data
         self.valid_mask = ~np.isnan(X).any(axis=1)
         X_valid = X[self.valid_mask]
-        X_df = pd.DataFrame(X_valid, columns=['YEAR', 'LONGITUDE', 'LATITUDE', 'BATHYMETRY', 'SST', 'SSH', 'UGO', 'VGO', 'NET_VEL'])
+        X_df = pd.DataFrame(X_valid, columns=KrillPredict.featureColumns)
         
         # Scale features to match training data
         self.logger.info(f"Scaling features...")
@@ -198,12 +229,12 @@ class KrillPredict:
         y[self.valid_mask] = valid_predictions
         return y
 
-    def plotPredictions(self, time_idx=0, save_path=None):
+    def plotPredictions(self, time_idx=0, save_path="output/"):
         """Plot predictions on a map"""
         import cartopy.crs as ccrs
         import cartopy.feature as cfeature
         import cmocean
-        
+
         # Get spatial extent
         lon_grid, lat_grid = self.spatialExtent()
         
@@ -268,8 +299,9 @@ class KrillPredict:
         
         # Add title with time information
         time_range = self.temporalExtent()
-        plt.title(f'Krill Prediction for {time_range[time_idx].strftime("%Y-%m-%d")} ({self.scenario})')
-        
+        time_v = time_range[time_idx].strftime("%Y-%m-%d")
+        plt.title(f'Krill Prediction for {time_v} ({self.scenario})')
+        save_path = f"{save_path}Map_{time_v}.png"
         if save_path:
             plt.savefig(save_path, bbox_inches='tight', dpi=300)
         else:
