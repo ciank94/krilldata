@@ -9,8 +9,8 @@ package for training and predicting krill density using multivariable regression
 
 ## Usage (usage/)
 - train.py contains example workflow for training model to predict krill density
-- mapKrill.py contains example workflow for mapping predicted krill density on input features
-
+- mapKrill.py contains example workflow for mapping predicted krill density on input features e.g.
+<img src="output/Map_2014.png" width="700" />
 
 ## Command line interfaces
 ### downloadCop.py
@@ -39,4 +39,7 @@ where filename is a NetCDF/xarray dataset, for example:
 python krilldata/exploreNC.py input/ssh.nc
 ```
 will explore contents of input/ssh.nc
+```
+
+
 
