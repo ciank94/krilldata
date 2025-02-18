@@ -310,6 +310,122 @@ class KrillPredict:
         plt.close()
         return
 
+class MapKrillDensity:
+    def __init__(self, inputPath, outputPath, modelType='rfr'):
+        self.bathymetryds = xr.open_dataset(f"{inputPath}/bathymetry.nc")
+        self.sstds = xr.open_dataset(f"{inputPath}/sst.nc")
+        self.sshds = xr.open_dataset(f"{inputPath}/ssh.nc")
+        self.chlds = xr.open_dataset(f"{inputPath}/chl.nc")
+        self.ironds = xr.open_dataset(f"{inputPath}/iron.nc")
+        self.fusedFilename = "krillFusedData.csv"
+        self.featureColumns = ["BATHYMETRY", "SST", "FE","SSH", "NET_VEL", "CHL", "YEAR", "LONGITUDE", "LATITUDE"]
+        self.targetColumn = "STANDARDISED_KRILL_UNDER_1M2"
+        self.inputPath = inputPath
+        self.outputPath = outputPath
+        self.modelType = modelType
+        self.model = load(f"{inputPath}/{self.modelType}Model.joblib")
+        with open("config/map_params.json", "r") as f:
+            self.mapParams = json.load(f)
+
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.info(f"================={self.__class__.__name__}=====================")
+        self.logger.info(f"Opening datasets: for {self.featureColumns} and {self.targetColumn}")
+        self.logger.info(f"model type: {self.modelType}")
+
+        # algorithm
+        self.spatialExtent()
+        self.loadEnvFeatures()
+        self.reindexInterpolate()
+        self.getFeatures()
+        self.predictY()
+        return
+
+    def spatialExtent(self):
+        self.lonSGmin, self.lonSGmax = self.mapParams['southGeorgia']['lon_min'], self.mapParams['southGeorgia']['lon_max']
+        self.latSGmin, self.latSGmax = self.mapParams['southGeorgia']['lat_min'], self.mapParams['southGeorgia']['lat_max']
+
+        self.lonPeMin, self.lonPeMax = self.mapParams['peninsula']['lon_min'], self.mapParams['peninsula']['lon_max']
+        self.latPeMin, self.latPeMax = self.mapParams['peninsula']['lat_min'], self.mapParams['peninsula']['lat_max']
+        # Define the spatial extent of the map
+        self.lonSG = np.arange(self.mapParams['southGeorgia']['lon_min'], 
+                        self.mapParams['southGeorgia']['lon_max'] + self.mapParams['southGeorgia']['lon_step'], 
+                        self.mapParams['southGeorgia']['lon_step'])
+        self.latSG = np.arange(self.mapParams['southGeorgia']['lat_min'], 
+                        self.mapParams['southGeorgia']['lat_max'] + self.mapParams['southGeorgia']['lat_step'], 
+                        self.mapParams['southGeorgia']['lat_step'])
+
+         # Define the spatial extent of the map
+        self.lonPe = np.arange(self.mapParams['peninsula']['lon_min'], 
+                        self.mapParams['peninsula']['lon_max'] + self.mapParams['peninsula']['lon_step'], 
+                        self.mapParams['peninsula']['lon_step'])
+        self.latPe = np.arange(self.mapParams['peninsula']['lat_min'], 
+                        self.mapParams['peninsula']['lat_max'] + self.mapParams['peninsula']['lat_step'], 
+                        self.mapParams['peninsula']['lat_step'])
+        
+        # Create meshgrid for all combinations of coordinates
+        self.lonSG_grid, self.latSG_grid = np.meshgrid(self.lonSG, self.latSG)
+        self.lonPe_grid, self.latPe_grid = np.meshgrid(self.lonPe, self.latPe)
+        return
+
+    def loadEnvFeatures(self):
+        # Load the fused data and remove any rows with NaN values
+        time_slice = slice('2016-01-01', '2016-03-31')
+        lat_slice = slice(self.latSGmin, self.latSGmax)
+        lon_slice = slice(self.lonSGmin, self.lonSGmax)
+
+        # Load data effectively
+        self.sstds = self.sstds.sel(time=time_slice, latitude=lat_slice, longitude=lon_slice)
+        self.sshds = self.sshds.sel(time=time_slice, latitude=lat_slice, longitude=lon_slice)
+        self.chlds = self.chlds.sel(time=time_slice, latitude=lat_slice, longitude=lon_slice)
+        self.ironds = self.ironds.sel(time=time_slice, latitude=lat_slice, longitude=lon_slice).isel(depth=0)
+        self.bathymetryds = self.bathymetryds.sel(lat=lat_slice, lon=lon_slice)
+
+        # For the time period, compute the mean efficiently with dask
+        self.sstdsMean = self.sstds.mean(dim='time', skipna=True).compute()
+        self.sshdsMean = self.sshds.mean(dim='time', skipna=True).compute()
+        self.chldsMean = self.chlds.mean(dim='time', skipna=True).compute()
+        self.irondsMean = self.ironds.mean(dim='time', skipna=True).compute()
+        
+        return
+
+    def reindexInterpolate(self):
+        # here I should clean values required;
+        irondsMean = self.irondsMean.sel(latitude=self.latSG, longitude=self.lonSG, method='nearest')
+        sstdsMean = self.sstdsMean.sel(latitude=self.latSG, longitude=self.lonSG, method='nearest')
+        chldsMean = self.chldsMean.sel(latitude=self.latSG, longitude=self.lonSG, method='nearest')
+        sshdsMean = self.sshdsMean.sel(latitude=self.latSG, longitude=self.lonSG, method='nearest')
+        bathymetryds = self.bathymetryds.sel(lat=self.latSG, lon=self.lonSG, method='nearest')
+        bvals = bathymetryds["elevation"].values
+        bvals[bvals > 0] = 0
+
+        # get all the relevant data
+        self.bathymetry = abs(bvals)
+        self.fe = irondsMean["fe"].values
+        self.sst = sstdsMean["analysed_sst"].values - 273.15
+        self.ssh = sshdsMean["adt"].values
+        self.net_vel = np.sqrt(np.power(sshdsMean["ugos"].values,2) + np.power(sshdsMean["vgos"].values,2))
+        self.chl = chldsMean["CHL"].values
+        self.year = 2016*np.ones(self.bathymetry.shape)
+        self.lon = self.lonSG_grid
+        self.lat = self.latSG_grid
+        return
+
+    def getFeatures(self):
+        X = self.bathymetry.flatten(), self.fe.flatten(), self.sst.flatten(), self.ssh.flatten(), self.net_vel.flatten(), self.chl.flatten(), self.year.flatten(), self.lon.flatten(), self.lat.flatten()
+        self.X = np.column_stack(X)
+        self.X_df = pd.DataFrame(self.X, columns=self.featureColumns)
+        for col in self.X_df.columns:
+            self.X_df[col] = (self.X_df[col] - self.X_df[col].mean()) / (self.X_df[col].std() + 0.00001)
+        return
+
+    def predictY(self):
+        self.y = self.model.predict(self.X_df)
+        self.y = self.y.reshape(self.bathymetry.shape)
+        breakpoint()
+        return
+
+    
+
 class ResponseCurves:
     # logger
     logging.basicConfig(level=logging.INFO)
@@ -494,6 +610,10 @@ class ResponseCurves:
             plt.show()
         return
 
+
+
+    
+
 class PerformancePlot:
     """Class for creating prediction vs observation plots"""
     
@@ -614,3 +734,4 @@ class PerformancePlot:
         else:
             plt.show()
         return
+

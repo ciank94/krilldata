@@ -1,5 +1,6 @@
 from krilldata import (
-    KrillPredict
+    KrillPredict,
+    MapKrillDensity
 )
 
 #===============IO Paths & model parameters===============
@@ -12,4 +13,8 @@ modelType = "rfr"
 #KrillPredict(inputPath, outputPath, modelType, scenario='peninsula')
 
 # South Georgia prediction
-KrillPredict(inputPath, outputPath, modelType, scenario='southGeorgia')
+#KrillPredict(inputPath, outputPath, modelType, scenario='southGeorgia')
+
+# ================MapKrillDensity class===============
+# Plots krill density over all scenarios
+MapKrillDensity(inputPath, outputPath, modelType='rfr')

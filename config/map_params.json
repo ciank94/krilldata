@@ -4,8 +4,8 @@
         "lon_max": -45,
         "lat_min": -65,
         "lat_max": -60,
-        "lon_step": 0.4,
-        "lat_step": 0.4,
+        "lon_step": 0.5,
+        "lat_step": 0.5,
         "time_min": "2021-01-01",
         "time_max": "2021-01-02",
         "time_step": "daily"
@@ -15,8 +15,8 @@
         "lon_max": -32,
         "lat_min": -58,
         "lat_max": -51,
-        "lon_step": 0.5,
-        "lat_step": 0.5,
+        "lon_step": 0.1,
+        "lat_step": 0.1,
         "time_min": "2016-01-01",
         "time_max": "2016-01-02",
         "time_step": "daily"
