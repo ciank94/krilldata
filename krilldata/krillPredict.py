@@ -338,6 +338,7 @@ class MapKrillDensity:
         self.reindexInterpolate()
         self.getFeatures()
         self.predictY()
+        self.mapPredictions()
         return
 
     def spatialExtent(self):
@@ -369,7 +370,8 @@ class MapKrillDensity:
 
     def loadEnvFeatures(self):
         # Load the fused data and remove any rows with NaN values
-        time_slice = slice('2016-01-01', '2016-03-31')
+        self.yearP = 2014
+        time_slice = slice(f'{self.yearP}-01-01', f'{self.yearP}-03-31')
         lat_slice = slice(self.latSGmin, self.latSGmax)
         lon_slice = slice(self.lonSGmin, self.lonSGmax)
 
@@ -395,17 +397,17 @@ class MapKrillDensity:
         chldsMean = self.chldsMean.sel(latitude=self.latSG, longitude=self.lonSG, method='nearest')
         sshdsMean = self.sshdsMean.sel(latitude=self.latSG, longitude=self.lonSG, method='nearest')
         bathymetryds = self.bathymetryds.sel(lat=self.latSG, lon=self.lonSG, method='nearest')
-        bvals = bathymetryds["elevation"].values
-        bvals[bvals > 0] = 0
+        self.bvals = bathymetryds["elevation"].values
+        self.bvals[self.bvals > 0] = 0
 
         # get all the relevant data
-        self.bathymetry = abs(bvals)
+        self.bathymetry = abs(self.bvals)
         self.fe = irondsMean["fe"].values
         self.sst = sstdsMean["analysed_sst"].values - 273.15
         self.ssh = sshdsMean["adt"].values
         self.net_vel = np.sqrt(np.power(sshdsMean["ugos"].values,2) + np.power(sshdsMean["vgos"].values,2))
         self.chl = chldsMean["CHL"].values
-        self.year = 2016*np.ones(self.bathymetry.shape)
+        self.year = self.yearP*np.ones(self.bathymetry.shape)
         self.lon = self.lonSG_grid
         self.lat = self.latSG_grid
         return
@@ -421,8 +423,64 @@ class MapKrillDensity:
     def predictY(self):
         self.y = self.model.predict(self.X_df)
         self.y = self.y.reshape(self.bathymetry.shape)
-        breakpoint()
         return
+
+    def mapPredictions(self, save_path="output/"):
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import cmocean
+        # Create figure with map projection
+        fig = plt.figure(figsize=(12, 8))
+        ax = plt.axes(projection=ccrs.PlateCarree())
+        ax.gridlines(draw_labels=True)
+        ax.coastlines()
+        
+        # Create levels for contour plot
+        #levels = np.linspace(0,np.nanmean(y_time)*1.5, 40)
+        self.y = np.power(10, self.y)
+        levels = np.linspace(0, 1.5, 30)
+        
+        # Plot bathymetry first
+        bath_data = self.bathymetry
+        lon_bath = self.lon
+        lat_bath = self.lat
+        
+        # Create proper meshgrid for bathymetry
+        #lon_bath_mesh, lat_bath_mesh = np.meshgrid(lon_bath, lat_bath)
+        
+        # Plot bathymetry
+        bath_levels = np.linspace(bath_data.min(), bath_data.max(), 10)
+        bath_mesh = ax.contour(lon_bath, lat_bath, bath_data,
+                                transform=ccrs.PlateCarree(), colors='gray',
+                                alpha=0.42, levels=bath_levels, linewidths=0.65)
+        #plt.colorbar(bath_mesh, label='Depth (m)', shrink=0.75)
+        
+        # Plot predictions with pcolormesh
+        mesh = ax.pcolormesh(self.lon, self.lat, self.y,
+                           transform=ccrs.PlateCarree(),
+                           cmap='Reds', vmin=min(levels), vmax=max(levels))
+        plt.colorbar(mesh, label='Krill Density', shrink=0.75)
+        
+        # Add land on top of contours
+        ax.add_feature(cfeature.LAND, facecolor='lightgray', zorder=100)
+        
+        # Set map extent with some padding
+        # ax.set_extent([
+        #     self.mapParams['lon_min'] - 0.25,
+        #     self.mapParams['lon_max'] + 0.25,
+        #     self.mapParams['lat_min'] - 0.25,
+        #     self.mapParams['lat_max'] + 0.25
+        # ], crs=ccrs.PlateCarree())
+        
+        # Add title with time information
+        plt.title(f'Krill Prediction for {self.yearP}')
+        save_path = f"{save_path}Map_{self.yearP}.png"
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        else:
+            plt.show()
+
+        pass
 
     
 
