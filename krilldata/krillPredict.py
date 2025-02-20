@@ -10,6 +10,10 @@ from scipy.stats import gaussian_kde
 from scipy.interpolate import RegularGridInterpolator
 from sklearn.metrics import mean_squared_error
 from krilldata import KrillTrain
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+import cmocean
+    
 
 #todo: predict
 class KrillPredict:
@@ -337,26 +341,26 @@ class MapKrillDensity:
     def plotExample(self):
         # algorithm
         self.spatialExtent()
-        self.loadEnvFeatures(year=2012, region = "AP")
+        self.loadEnvFeatures(year=2014, region = "AP")
         self.reindexInterpolate()
         self.getFeatures()
         self.predictY()
         self.mapPredictions()
         return
 
-    def plotAP(self):
+    def plotRegion(self, region):
         # algorithm
         self.spatialExtent()
         y = []
         for year in range(2013, 2016+1):
-            self.loadEnvFeatures(year=year, region = "AP")
+            self.loadEnvFeatures(year=year, region = region)
             self.reindexInterpolate()
             self.getFeatures()
             self.predictY()
             y.append(self.y)
             self.logger.info(f"Finished year {year}")
-        breakpoint()
-            
+        self.y_v = y
+        self.mapArea()     
         return
 
     def spatialExtent(self):
@@ -365,6 +369,9 @@ class MapKrillDensity:
 
         self.lonPeMin, self.lonPeMax = self.mapParams['peninsula']['lon_min'], self.mapParams['peninsula']['lon_max']
         self.latPeMin, self.latPeMax = self.mapParams['peninsula']['lat_min'], self.mapParams['peninsula']['lat_max']
+
+        self.lonSoMin, self.latSoMin = self.mapParams['southOrkney']['lon_min'], self.mapParams['southOrkney']['lat_min']
+        self.lonSoMax, self.latSoMax = self.mapParams['southOrkney']['lon_max'], self.mapParams['southOrkney']['lat_max']
         # Define the spatial extent of the map
         self.lonSG = np.arange(self.mapParams['southGeorgia']['lon_min'], 
                         self.mapParams['southGeorgia']['lon_max'] + self.mapParams['southGeorgia']['lon_step'], 
@@ -373,17 +380,27 @@ class MapKrillDensity:
                         self.mapParams['southGeorgia']['lat_max'] + self.mapParams['southGeorgia']['lat_step'], 
                         self.mapParams['southGeorgia']['lat_step'])
 
-         # Define the spatial extent of the map
+        # Define the spatial extent of the map
         self.lonPe = np.arange(self.mapParams['peninsula']['lon_min'], 
                         self.mapParams['peninsula']['lon_max'] + self.mapParams['peninsula']['lon_step'], 
                         self.mapParams['peninsula']['lon_step'])
         self.latPe = np.arange(self.mapParams['peninsula']['lat_min'], 
                         self.mapParams['peninsula']['lat_max'] + self.mapParams['peninsula']['lat_step'], 
                         self.mapParams['peninsula']['lat_step'])
+
+        # Define the spatial extent of the map
+        self.lonSo = np.arange(self.mapParams['southOrkney']['lon_min'], 
+                        self.mapParams['southOrkney']['lon_max'] + self.mapParams['southOrkney']['lon_step'], 
+                        self.mapParams['southOrkney']['lon_step'])
+        self.latSo = np.arange(self.mapParams['southOrkney']['lat_min'], 
+                        self.mapParams['southOrkney']['lat_max'] + self.mapParams['southOrkney']['lat_step'], 
+                        self.mapParams['southOrkney']['lat_step'])
+        
         
         # Create meshgrid for all combinations of coordinates
         self.lonSG_grid, self.latSG_grid = np.meshgrid(self.lonSG, self.latSG)
         self.lonPe_grid, self.latPe_grid = np.meshgrid(self.lonPe, self.latPe)
+        self.lonSo_grid, self.latSo_grid = np.meshgrid(self.lonSo, self.latSo)
         return
 
     def loadEnvFeatures(self, year, region):
@@ -397,6 +414,9 @@ class MapKrillDensity:
         elif region == "SG":
             lat_slice = slice(self.latSGmin, self.latSGmax)
             lon_slice = slice(self.lonSGmin, self.lonSGmax)
+        elif region == "SO":
+            lat_slice = slice(self.latSoMin, self.latSoMax)
+            lon_slice = slice(self.lonSoMin, self.lonSoMax)
         else:
             raise ValueError("Region must be either 'SG' or 'AP'")
 
@@ -424,17 +444,30 @@ class MapKrillDensity:
             lat = self.latSG
             lon = self.lonSG
 
+        if self.region == "SG":
+            self.lon = self.lonSG_grid
+            self.lat = self.latSG_grid
+        elif self.region == "SO":
+            self.lon = self.lonSo_grid
+            self.lat = self.latSo_grid
+        else:
+            self.lon = self.lonPe_grid
+            self.lat = self.latPe_grid
+
+
         interp_fe = RegularGridInterpolator((self.irondsMean["latitude"].values, self.irondsMean["longitude"].values), self.irondsMean["fe"].values, method='linear', bounds_error=False, fill_value=np.nan)
-        irondsMean = interp_fe((self.latPe_grid, self.lonPe_grid))
+        irondsMean = interp_fe((self.lat, self.lon))
         interp_t = RegularGridInterpolator((self.sstdsMean["latitude"].values, self.sstdsMean["longitude"].values), self.sstdsMean["analysed_sst"].values, method='linear', bounds_error=False, fill_value=np.nan)
-        sstdsMean = interp_t((self.latPe_grid, self.lonPe_grid))
+        sstdsMean = interp_t((self.lat, self.lon))
         interp_chl = RegularGridInterpolator((self.chldsMean["latitude"].values, self.chldsMean["longitude"].values), self.chldsMean["CHL"].values, method='linear', bounds_error=False, fill_value=np.nan)
-        chldsMean = interp_chl((self.latPe_grid, self.lonPe_grid))
+        chldsMean = interp_chl((self.lat, self.lon))
         interp_ssh = RegularGridInterpolator((self.sshdsMean["latitude"].values, self.sshdsMean["longitude"].values), self.sshdsMean["adt"].values, method='linear', bounds_error=False, fill_value=np.nan)
-        sshdsMean = interp_ssh((self.latPe_grid, self.lonPe_grid))
+        sshdsMean = interp_ssh((self.lat, self.lon))
         # todo: interpolate net_vel after finding values
+        interp_net = RegularGridInterpolator((self.sshdsMean["latitude"].values, self.sshdsMean["longitude"].values), np.sqrt(self.sshdsMean["ugos"].values**2 + self.sshdsMean["vgos"].values**2), method='linear', bounds_error=False, fill_value=np.nan)
+        net_vel = interp_net((self.lat, self.lon))
         interp_bath = RegularGridInterpolator((self.bathymetryds["lat"].values, self.bathymetryds["lon"].values), self.bathymetryds["elevation"].values, method='linear', bounds_error=False, fill_value=np.nan)
-        bathymetryds = interp_bath((self.latPe_grid, self.lonPe_grid))
+        bathymetryds = interp_bath((self.lat, self.lon))
         #bathymetryds = self.bathymetryds.sel(lat=lat, lon=lon, method='nearest')
         #self.bvals = bathymetryds["elevation"].values
         self.bvals = bathymetryds
@@ -450,15 +483,9 @@ class MapKrillDensity:
         self.fe = irondsMean
         self.sst = sstdsMean - 273.15
         self.ssh = sshdsMean
-        self.net_vel = np.sqrt(np.power(sshdsMean["ugos"].values,2) + np.power(sshdsMean["vgos"].values,2))
+        self.net_vel = net_vel
         self.chl = chldsMean
         self.year = self.yearP*np.ones(self.bathymetry.shape)
-        if self.region == "SG":
-            self.lon = self.lonSG_grid
-            self.lat = self.latSG_grid
-        else:
-            self.lon = self.lonPe_grid
-            self.lat = self.latPe_grid
         return
 
 
@@ -474,6 +501,63 @@ class MapKrillDensity:
         self.y = self.model.predict(self.X_df)
         self.y = self.y.reshape(self.bathymetry.shape)
         return
+
+    def mapArea(self, save_path = "output/"):
+        # Create levels for contour plot
+        #levels = np.linspace(0,np.nanmean(y_time)*1.5, 40)
+        levels = np.linspace(0, 1.5, 30)
+        
+        # Plot bathymetry first
+        bath_data = self.bathymetry
+        lon_bath = self.lon
+        lat_bath = self.lat
+
+        # Create subplots
+        fig, axs = plt.subplots(figsize=(20,12), nrows=2, ncols=2, 
+        subplot_kw={'projection': ccrs.PlateCarree()}, layout="constrained")
+
+        # Plot bathymetry on each subplot
+        f2_size=20
+        counter = -1
+        for ax in axs.flatten():
+            counter+=1
+            gl = ax.gridlines(draw_labels=True, alpha=0.4)
+            gl.top_labels = False
+            gl.right_labels = False
+            gl.xlabel_style = {'size': 20, 'color': 'black'}
+            gl.ylabel_style = {'size': 20, 'color': 'black'}
+            ax.coastlines()
+            self.plot_bathymetry(ax, lon_bath, lat_bath, bath_data)
+            # Plot predictions with pcolormesh
+            y_v = np.power(10, self.y_v[counter])
+            mesh = ax.pcolormesh(self.lon, self.lat, y_v,
+                           transform=ccrs.PlateCarree(),
+                           cmap='Reds', vmin=min(levels), vmax=max(levels))
+            cbar = plt.colorbar(mesh, shrink=0.75, pad=0.01)
+            cbar.ax.set_ylabel("individuals/m$^{2}$", loc="center", size=f2_size, weight="bold")
+            cbar.ax.tick_params(labelsize=f2_size, rotation=0)
+
+            # Add land on top of contours
+            ax.add_feature(cfeature.LAND, facecolor='lightgray', zorder=100)
+            self.logger.info(f"Plot {counter + 1} of 4")
+        
+        
+        save_path = f"{save_path}Map_{self.region}.png"
+        if save_path:
+            plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        return
+
+
+    def plot_bathymetry(self, ax, lon_bath, lat_bath, bath_data):
+        # Create levels for contour plot
+        levels = np.linspace(0, 1.5, 30)
+        
+        # Plot bathymetry
+        bath_levels = np.linspace(bath_data.min(), bath_data.max(), 10)
+        bath_mesh = ax.contour(lon_bath, lat_bath, bath_data,
+                            transform=ccrs.PlateCarree(), colors='gray',
+                            alpha=0.42, levels=bath_levels, linewidths=0.65)
+        return bath_mesh
 
     def mapPredictions(self, save_path="output/"):
         import cartopy.crs as ccrs
@@ -504,6 +588,7 @@ class MapKrillDensity:
                                 transform=ccrs.PlateCarree(), colors='gray',
                                 alpha=0.42, levels=bath_levels, linewidths=0.65)
         #plt.colorbar(bath_mesh, label='Depth (m)', shrink=0.75)
+
         
         # Plot predictions with pcolormesh
         mesh = ax.pcolormesh(self.lon, self.lat, self.y,

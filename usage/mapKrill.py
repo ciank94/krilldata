@@ -20,7 +20,13 @@ modelType = "rfr"
 mp = MapKrillDensity(inputPath, outputPath, modelType='rfr')
 
 # plot example
-mp.plotExample()
+#mp.plotExample()
 
 # plot AP
-#mp.plotAP()
+# mp.plotRegion(region='AP')
+
+# plot SG
+#mp.plotRegion(region='SG')
+
+# plot SO
+mp.plotRegion(region='SO')
