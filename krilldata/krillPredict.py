@@ -7,6 +7,7 @@ import logging
 import matplotlib.pyplot as plt
 import os
 from scipy.stats import gaussian_kde
+from scipy.interpolate import RegularGridInterpolator
 from sklearn.metrics import mean_squared_error
 from krilldata import KrillTrain
 
@@ -331,14 +332,31 @@ class MapKrillDensity:
         self.logger.info(f"================={self.__class__.__name__}=====================")
         self.logger.info(f"Opening datasets: for {self.featureColumns} and {self.targetColumn}")
         self.logger.info(f"model type: {self.modelType}")
+        return
 
+    def plotExample(self):
         # algorithm
         self.spatialExtent()
-        self.loadEnvFeatures()
+        self.loadEnvFeatures(year=2012, region = "AP")
         self.reindexInterpolate()
         self.getFeatures()
         self.predictY()
         self.mapPredictions()
+        return
+
+    def plotAP(self):
+        # algorithm
+        self.spatialExtent()
+        y = []
+        for year in range(2013, 2016+1):
+            self.loadEnvFeatures(year=year, region = "AP")
+            self.reindexInterpolate()
+            self.getFeatures()
+            self.predictY()
+            y.append(self.y)
+            self.logger.info(f"Finished year {year}")
+        breakpoint()
+            
         return
 
     def spatialExtent(self):
@@ -368,49 +386,81 @@ class MapKrillDensity:
         self.lonPe_grid, self.latPe_grid = np.meshgrid(self.lonPe, self.latPe)
         return
 
-    def loadEnvFeatures(self):
+    def loadEnvFeatures(self, year, region):
         # Load the fused data and remove any rows with NaN values
-        self.yearP = 2014
+        self.region = region
+        self.yearP = year
         time_slice = slice(f'{self.yearP}-01-01', f'{self.yearP}-03-31')
-        lat_slice = slice(self.latSGmin, self.latSGmax)
-        lon_slice = slice(self.lonSGmin, self.lonSGmax)
+        if region == "AP":
+            lat_slice = slice(self.latPeMin, self.latPeMax)
+            lon_slice = slice(self.lonPeMin, self.lonPeMax)
+        elif region == "SG":
+            lat_slice = slice(self.latSGmin, self.latSGmax)
+            lon_slice = slice(self.lonSGmin, self.lonSGmax)
+        else:
+            raise ValueError("Region must be either 'SG' or 'AP'")
 
         # Load data effectively
-        self.sstds = self.sstds.sel(time=time_slice, latitude=lat_slice, longitude=lon_slice)
-        self.sshds = self.sshds.sel(time=time_slice, latitude=lat_slice, longitude=lon_slice)
-        self.chlds = self.chlds.sel(time=time_slice, latitude=lat_slice, longitude=lon_slice)
-        self.ironds = self.ironds.sel(time=time_slice, latitude=lat_slice, longitude=lon_slice).isel(depth=0)
-        self.bathymetryds = self.bathymetryds.sel(lat=lat_slice, lon=lon_slice)
+        self.sstdsSub = self.sstds.sel(time=time_slice, latitude=lat_slice, longitude=lon_slice)
+        self.sshdsSub = self.sshds.sel(time=time_slice, latitude=lat_slice, longitude=lon_slice)
+        self.chldsSub = self.chlds.sel(time=time_slice, latitude=lat_slice, longitude=lon_slice)
+        self.irondsSub = self.ironds.sel(time=time_slice, latitude=lat_slice, longitude=lon_slice).isel(depth=0)
+        self.bathymetrydsSub = self.bathymetryds.sel(lat=lat_slice, lon=lon_slice)
 
         # For the time period, compute the mean efficiently with dask
-        self.sstdsMean = self.sstds.mean(dim='time', skipna=True).compute()
-        self.sshdsMean = self.sshds.mean(dim='time', skipna=True).compute()
-        self.chldsMean = self.chlds.mean(dim='time', skipna=True).compute()
-        self.irondsMean = self.ironds.mean(dim='time', skipna=True).compute()
+        self.sstdsMean = self.sstdsSub.mean(dim='time', skipna=True).compute()
+        self.sshdsMean = self.sshdsSub.mean(dim='time', skipna=True).compute()
+        self.chldsMean = self.chldsSub.mean(dim='time', skipna=True).compute()
+        self.irondsMean = self.irondsSub.mean(dim='time', skipna=True).compute()
         
         return
 
     def reindexInterpolate(self):
         # here I should clean values required;
-        irondsMean = self.irondsMean.sel(latitude=self.latSG, longitude=self.lonSG, method='nearest')
-        sstdsMean = self.sstdsMean.sel(latitude=self.latSG, longitude=self.lonSG, method='nearest')
-        chldsMean = self.chldsMean.sel(latitude=self.latSG, longitude=self.lonSG, method='nearest')
-        sshdsMean = self.sshdsMean.sel(latitude=self.latSG, longitude=self.lonSG, method='nearest')
-        bathymetryds = self.bathymetryds.sel(lat=self.latSG, lon=self.lonSG, method='nearest')
-        self.bvals = bathymetryds["elevation"].values
+        if self.region == "AP":
+            lat = self.latPe
+            lon = self.lonPe
+        elif self.region == "SG":
+            lat = self.latSG
+            lon = self.lonSG
+
+        interp_fe = RegularGridInterpolator((self.irondsMean["latitude"].values, self.irondsMean["longitude"].values), self.irondsMean["fe"].values, method='linear', bounds_error=False, fill_value=np.nan)
+        irondsMean = interp_fe((self.latPe_grid, self.lonPe_grid))
+        interp_t = RegularGridInterpolator((self.sstdsMean["latitude"].values, self.sstdsMean["longitude"].values), self.sstdsMean["analysed_sst"].values, method='linear', bounds_error=False, fill_value=np.nan)
+        sstdsMean = interp_t((self.latPe_grid, self.lonPe_grid))
+        interp_chl = RegularGridInterpolator((self.chldsMean["latitude"].values, self.chldsMean["longitude"].values), self.chldsMean["CHL"].values, method='linear', bounds_error=False, fill_value=np.nan)
+        chldsMean = interp_chl((self.latPe_grid, self.lonPe_grid))
+        interp_ssh = RegularGridInterpolator((self.sshdsMean["latitude"].values, self.sshdsMean["longitude"].values), self.sshdsMean["adt"].values, method='linear', bounds_error=False, fill_value=np.nan)
+        sshdsMean = interp_ssh((self.latPe_grid, self.lonPe_grid))
+        # todo: interpolate net_vel after finding values
+        interp_bath = RegularGridInterpolator((self.bathymetryds["lat"].values, self.bathymetryds["lon"].values), self.bathymetryds["elevation"].values, method='linear', bounds_error=False, fill_value=np.nan)
+        bathymetryds = interp_bath((self.latPe_grid, self.lonPe_grid))
+        #bathymetryds = self.bathymetryds.sel(lat=lat, lon=lon, method='nearest')
+        #self.bvals = bathymetryds["elevation"].values
+        self.bvals = bathymetryds
         self.bvals[self.bvals > 0] = 0
 
         # get all the relevant data
         self.bathymetry = abs(self.bvals)
-        self.fe = irondsMean["fe"].values
-        self.sst = sstdsMean["analysed_sst"].values - 273.15
-        self.ssh = sshdsMean["adt"].values
+        # self.fe = irondsMean["fe"].values
+        # self.sst = sstdsMean["analysed_sst"].values - 273.15
+        # self.ssh = sshdsMean["adt"].values
+        # self.net_vel = np.sqrt(np.power(sshdsMean["ugos"].values,2) + np.power(sshdsMean["vgos"].values,2))
+        # self.chl = chldsMean["CHL"].values
+        self.fe = irondsMean
+        self.sst = sstdsMean - 273.15
+        self.ssh = sshdsMean
         self.net_vel = np.sqrt(np.power(sshdsMean["ugos"].values,2) + np.power(sshdsMean["vgos"].values,2))
-        self.chl = chldsMean["CHL"].values
+        self.chl = chldsMean
         self.year = self.yearP*np.ones(self.bathymetry.shape)
-        self.lon = self.lonSG_grid
-        self.lat = self.latSG_grid
+        if self.region == "SG":
+            self.lon = self.lonSG_grid
+            self.lat = self.latSG_grid
+        else:
+            self.lon = self.lonPe_grid
+            self.lat = self.latPe_grid
         return
+
 
     def getFeatures(self):
         X = self.bathymetry.flatten(), self.fe.flatten(), self.sst.flatten(), self.ssh.flatten(), self.net_vel.flatten(), self.chl.flatten(), self.year.flatten(), self.lon.flatten(), self.lat.flatten()
@@ -539,6 +589,7 @@ class ResponseCurves:
             self.logger.info(f"  Median: {self.feature_stats[col]['median']:.3f}")
             self.logger.info(f"  Std Dev: {self.feature_stats[col]['std']:.3f}")
             self.logger.info(f"  Range: [{self.feature_stats[col]['min']:.3f}, {self.feature_stats[col]['max']:.3f}]")
+        return
 
     def initLogger(self):
         """Initialize the logger for the ResponseCurves class."""
@@ -667,10 +718,6 @@ class ResponseCurves:
         else:
             plt.show()
         return
-
-
-
-    
 
 class PerformancePlot:
     """Class for creating prediction vs observation plots"""

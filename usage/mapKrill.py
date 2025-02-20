@@ -17,4 +17,10 @@ modelType = "rfr"
 
 # ================MapKrillDensity class===============
 # Plots krill density over all scenarios
-MapKrillDensity(inputPath, outputPath, modelType='rfr')
+mp = MapKrillDensity(inputPath, outputPath, modelType='rfr')
+
+# plot example
+mp.plotExample()
+
+# plot AP
+#mp.plotAP()

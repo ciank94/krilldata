@@ -1,11 +1,11 @@
 {
     "peninsula": {
         "lon_min": -65,
-        "lon_max": -45,
-        "lat_min": -65,
-        "lat_max": -60,
-        "lon_step": 0.5,
-        "lat_step": 0.5,
+        "lon_max": -53,
+        "lat_min": -66,
+        "lat_max": -58,
+        "lon_step": 0.02,
+        "lat_step": 0.02,
         "time_min": "2021-01-01",
         "time_max": "2021-01-02",
         "time_step": "daily"
