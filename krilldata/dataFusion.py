@@ -41,7 +41,8 @@ class DataFusion:
 
         # Main methods
         self.initLogger()
-        self.fuseData()
+        #self.fuseData()
+        self.fuseDynamic()
         return
 
     def initLogger(self):
@@ -70,6 +71,38 @@ class DataFusion:
 
         self.krillData = pd.read_csv(os.path.join(self.inputPath, DataFusion.fusedFilename))
         self.checkPlot()
+        return
+
+    def fuseDynamic(self):
+        sstDataset = xr.open_dataset(self.sstPath)
+        sshDataset = xr.open_dataset(self.sshPath)
+        chlDataset = xr.open_dataset(self.chlPath)
+        ironDataset = xr.open_dataset(self.ironPath)
+        lat = np.array(self.krillData['LATITUDE'])
+        lon = np.array(self.krillData['LONGITUDE'])
+        
+        time_slice = slice(f'-01-01', f'-03-31')
+        sst = sstDataset.analysed_sst.sel(time=sstDataset.time.dt.month.isin([1,2,3]))
+        breakpoint()
+        yearly_mean = sst.groupby("time.year").mean(dim="time", skipna=True).compute()
+
+        # calculate time:
+        start_time = time.time()
+        sstDataset.analysed_sst.mean(dim='time', skipna=True).compute()
+        end_time = time.time()
+        print(f"Time: {end_time - start_time}")
+        for i in range(len(lat)):
+            sst = sstDataset.analysed_sst.sel(latitude=lat[i], longitude=lon[i], method='nearest')
+            sstmean = sst.mean(dim='time', skipna=True).compute()
+            ssh = sshDataset.adt.sel(latitude=lat[i], longitude=lon[i], method='nearest')
+            sshmean = ssh.mean(dim='time', skipna=True).compute()
+            chl = chlDataset.CHL.sel(latitude=lat[i], longitude=lon[i], method='nearest')
+            chlmean = chl.mean(dim='time', skipna=True).compute()
+            iron = ironDataset.fe.sel(latitude=lat[i], longitude=lon[i], method='nearest')
+            ironmean = iron.mean(dim='time', skipna=True).compute()
+            self.logger.info(f"{i}")
+        breakpoint()
+
         return
 
     def fuseYear(self):
