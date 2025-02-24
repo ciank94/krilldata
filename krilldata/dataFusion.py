@@ -8,6 +8,7 @@ import cmocean
 import copernicusmarine as cop
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import time
 
 class DataFusion:
     # logger
@@ -39,10 +40,37 @@ class DataFusion:
         self.ironPath = f"{inputPath}/iron.nc"
         self.oxyPath = f"{inputPath}/oxygen.nc"
 
+        self.newIronPath = f"{inputPath}/newIron.nc"
+        self.newSshPath = f"{inputPath}/newSsh.nc"
+        self.newChlPath = f"{inputPath}/newChl.nc"
+        self.newSstPath = f"{inputPath}/newSst.nc"
+        self.newVelPath = f"{inputPath}/newVel.nc"
+
+        self.env2Plot = f"{outputPath}/envData2.png"
+
         # Main methods
         self.initLogger()
+        # the previous approach was to fuse all data and then impute, but this is not necessary
         #self.fuseData()
-        self.fuseDynamic()
+        if os.path.exists(self.newSstPath):
+            self.logger.info(f"files exist")
+        else:
+            self.fuseDynamic()
+        self.loadEnvFeatures()
+        return
+
+    def loadEnvFeatures(self):
+        self.chl = xr.open_dataset(self.newChlPath)
+        self.iron = xr.open_dataset(self.newIronPath)
+        self.sst = xr.open_dataset(self.newSstPath)
+        self.ssh = xr.open_dataset(self.newSshPath)
+        self.vel = xr.open_dataset(self.newVelPath)
+        self.bath = xr.open_dataset(self.bathymetryPath)
+        if os.path.exists(self.env2Plot):
+            self.logger.info(f"File already exists: {self.env2Plot}")
+        else:
+            self.plotEnvData2()
+        breakpoint()
         return
 
     def initLogger(self):
@@ -80,29 +108,58 @@ class DataFusion:
         ironDataset = xr.open_dataset(self.ironPath)
         lat = np.array(self.krillData['LATITUDE'])
         lon = np.array(self.krillData['LONGITUDE'])
-        
-        time_slice = slice(f'-01-01', f'-03-31')
-        sst = sstDataset.analysed_sst.sel(time=sstDataset.time.dt.month.isin([1,2,3]))
-        breakpoint()
-        yearly_mean = sst.groupby("time.year").mean(dim="time", skipna=True).compute()
 
-        # calculate time:
         start_time = time.time()
-        sstDataset.analysed_sst.mean(dim='time', skipna=True).compute()
+        sst = sstDataset.analysed_sst.sel(time=sstDataset.time.dt.month.isin([1,2,3]))
+        sst_yearly_mean = sst.groupby("time.year").mean(dim="time", skipna=True).compute()
+        sst_percentile_10 = sst_yearly_mean.quantile(0.1, dim='year', skipna=True)
+        sst_percentile_90 = sst_yearly_mean.quantile(0.9, dim='year', skipna=True)
+        sst_mean_value = sst_yearly_mean.mean(dim='year', skipna=True)
+        sst_percentile_10 = sst_percentile_10.drop_vars("quantile")
+        sst_percentile_90 = sst_percentile_90.drop_vars("quantile")
+        self.logger.info(f"sst stats")
+        sst_ds = xr.Dataset({"sst_10th_percentile": sst_percentile_10 - 273.15, "sst_90th_percentile": sst_percentile_90 - 273.15, "sst_mean": sst_mean_value - 273.15})
+
+        ssh = sshDataset.sel(time=sshDataset.time.dt.month.isin([1,2,3]))
+        ssh_yearly_mean = ssh.groupby("time.year").mean(dim="time", skipna=True).compute()
+        ssh_percentile_10 = ssh_yearly_mean.quantile(0.1, dim='year', skipna=True)
+        ssh_percentile_90 = ssh_yearly_mean.quantile(0.9, dim='year', skipna=True)
+        ssh_percentile_10 = ssh_percentile_10.drop_vars("quantile")
+        ssh_percentile_90 = ssh_percentile_90.drop_vars("quantile")
+        ssh_mean_value = ssh_yearly_mean.mean(dim='year', skipna=True)
+        self.logger.info(f"ssh stats")
+        ssh_ds = xr.Dataset({"ssh_10th_percentile": ssh_percentile_10.adt, "ssh_90th_percentile": ssh_percentile_90.adt, "ssh_mean": ssh_mean_value.adt})
+        vel_ds = xr.Dataset({"vel_10th_percentile": np.sqrt(np.power(ssh_percentile_10.ugos,2) + np.power(ssh_percentile_10.vgos,2)), 
+                            "vel_90th_percentile": np.sqrt(np.power(ssh_percentile_90.ugos,2) + np.power(ssh_percentile_90.vgos,2)), 
+                            "vel_mean": np.sqrt(np.power(ssh_mean_value.ugos,2) + np.power(ssh_mean_value.vgos,2))})
+
+        chl = chlDataset.CHL.sel(time=chlDataset.time.dt.month.isin([1,2,3]))
+        chl_yearly_mean = chl.groupby("time.year").mean(dim="time", skipna=True).compute()
+        chl_percentile_10 = chl_yearly_mean.quantile(0.1, dim='year', skipna=True)
+        chl_percentile_90 = chl_yearly_mean.quantile(0.9, dim='year', skipna=True)
+        chl_percentile_10 = chl_percentile_10.drop_vars("quantile")
+        chl_percentile_90 = chl_percentile_90.drop_vars("quantile")
+        chl_mean_value = chl_yearly_mean.mean(dim='year', skipna=True)
+        chl_ds = xr.Dataset({"chl_10th_percentile": chl_percentile_10, "chl_90th_percentile": chl_percentile_90, "chl_mean": chl_mean_value})
+        self.logger.info(f"chl stats")
+
+        iron = ironDataset.fe.sel(time=ironDataset.time.dt.month.isin([1,2,3])).isel(depth=0)
+        iron_yearly_mean = iron.groupby("time.year").mean(dim="time", skipna=True).compute()
+        iron_percentile_10 = iron_yearly_mean.quantile(0.1, dim='year', skipna=True)
+        iron_percentile_90 = iron_yearly_mean.quantile(0.9, dim='year', skipna=True)
+        iron_percentile_10 = iron_percentile_10.drop_vars("quantile")
+        iron_percentile_90 = iron_percentile_90.drop_vars("quantile")
+        iron_mean_value = iron_yearly_mean.mean(dim='year', skipna=True)
+        iron_ds = xr.Dataset({"iron_10th_percentile": iron_percentile_10, "iron_90th_percentile": iron_percentile_90, "iron_mean": iron_mean_value})
+        self.logger.info(f"iron stats")
+
+        sst_ds.to_netcdf(self.newSstPath)
+        ssh_ds.to_netcdf(self.newSshPath)
+        vel_ds.to_netcdf(self.newVelPath)
+        chl_ds.to_netcdf(self.newChlPath)
+        iron_ds.to_netcdf(self.newIronPath)
         end_time = time.time()
         print(f"Time: {end_time - start_time}")
-        for i in range(len(lat)):
-            sst = sstDataset.analysed_sst.sel(latitude=lat[i], longitude=lon[i], method='nearest')
-            sstmean = sst.mean(dim='time', skipna=True).compute()
-            ssh = sshDataset.adt.sel(latitude=lat[i], longitude=lon[i], method='nearest')
-            sshmean = ssh.mean(dim='time', skipna=True).compute()
-            chl = chlDataset.CHL.sel(latitude=lat[i], longitude=lon[i], method='nearest')
-            chlmean = chl.mean(dim='time', skipna=True).compute()
-            iron = ironDataset.fe.sel(latitude=lat[i], longitude=lon[i], method='nearest')
-            ironmean = iron.mean(dim='time', skipna=True).compute()
-            self.logger.info(f"{i}")
-        breakpoint()
-
         return
 
     def fuseYear(self):
@@ -1047,3 +1104,152 @@ class DataFusion:
         
         self.logger.info(f"Saved environmental data plot to: {plotName}")
         return
+
+    def plotEnvData2(self):
+        """Create a figure showing bathymetry with krill locations and environmental variables"""
+        self.logger.info("Plotting environmental data...")
+        
+        # Create masked array for bathymetry where elevation <= 0
+        bathymetry = abs(self.bath.elevation.values)
+        # Mask both land (elevation > 0) and invalid points
+        masked_bathymetry = np.ma.masked_where((bathymetry <= 0) | (bathymetry > 10000), bathymetry)
+        
+        # Create contour levels every 500m
+        contour_levels = np.arange(0, 3000, 400)
+        
+        # Create figure with 3x2 subplots
+        plt.rcParams.update({'font.size': 20})  # Set default font size to 20
+        fig = plt.figure(figsize=(28, 24))  # Increased height for better spacing
+        gs = fig.add_gridspec(3, 2, hspace=0.001, wspace=0.25)  # Increased hspace from 0.005 to 0.4
+        
+        projection = ccrs.PlateCarree()
+        
+        # Plot 1: Bathymetry with krill locations
+        ax1 = plt.subplot(gs[0, 0], projection=projection)
+        im1 = ax1.pcolormesh(self.bath.lon, self.bath.lat, 
+                          masked_bathymetry, shading='auto', 
+                          cmap='Blues', transform=projection, zorder=1)
+        im1.set_clim(0, 5000)
+        ax1.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)  # Increased zorder
+        ax1.coastlines(zorder=101)  # Coastlines on top
+        ax1.scatter(self.krillData.LONGITUDE, 
+                   self.krillData.LATITUDE,
+                   c='red', s=10, edgecolor='black', linewidth=0.3,  # Reduced size
+                   transform=projection, zorder=102)  # Points on top of everything
+        cbar1 = plt.colorbar(im1, ax=ax1, fraction=0.025, pad=0.04)
+        cbar1.set_label('Depth (m)', fontsize=20)
+        cbar1.ax.tick_params(labelsize=20)
+        ax1.set_xlabel('Longitude', fontsize=20)
+        ax1.set_ylabel('Latitude', fontsize=20)
+        ax1.tick_params(axis='both', labelsize=20)
+        cs1 = ax1.contour(self.bath.lon, self.bath.lat, 
+                       masked_bathymetry, levels=contour_levels,
+                       colors='grey', alpha=0.3, transform=projection)
+        self.logger.info("Completed bathymetry subplot (1/6)")
+
+        # Plot 2: SST
+        ax2 = plt.subplot(gs[0, 1], projection=projection)
+        im2 = ax2.pcolormesh(self.sst.longitude.values, self.sst.latitude.values, 
+                          self.sst.sst_mean.values, shading='auto',
+                          cmap=cmocean.cm.thermal, transform=projection)
+        ax2.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
+        ax2.coastlines(zorder=101)
+        cbar2 = plt.colorbar(im2, ax=ax2, fraction=0.025, pad=0.04)
+        cbar2.set_label('Temperature (°C)', fontsize=20)
+        cbar2.ax.tick_params(labelsize=20)
+        ax2.set_xlabel('Longitude', fontsize=20)
+        ax2.set_ylabel('Latitude', fontsize=20)
+        ax2.tick_params(axis='both', labelsize=20)
+        cs2 = ax2.contour(self.bath.lon, self.bath.lat, 
+                       masked_bathymetry, levels=contour_levels,
+                       colors='grey', alpha=0.3, transform=projection)
+        self.logger.info("Completed SST subplot (2/6)")
+
+        # Plot 3: SSH
+        ax3 = plt.subplot(gs[1, 0], projection=projection)
+        im3 = ax3.pcolormesh(self.ssh.longitude.values, self.ssh.latitude.values, 
+                          self.ssh.ssh_mean.values, shading='auto',
+                          cmap=cmocean.cm.balance, transform=projection)
+        ax3.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
+        ax3.coastlines(zorder=101)
+        cbar3 = plt.colorbar(im3, ax=ax3, fraction=0.025, pad=0.04)
+        cbar3.set_label('Height (m)', fontsize=20)
+        cbar3.ax.tick_params(labelsize=20)
+        ax3.set_xlabel('Longitude', fontsize=20)
+        ax3.set_ylabel('Latitude', fontsize=20)
+        ax3.tick_params(axis='both', labelsize=20)
+        cs3 = ax3.contour(self.bath.lon, self.bath.lat, 
+                       masked_bathymetry, levels=contour_levels,
+                       colors='grey', alpha=0.3, transform=projection)
+        self.logger.info("Completed SSH subplot (3/6)")
+
+        # Plot 4: Net velocity
+        ax4 = plt.subplot(gs[1, 1], projection=projection)
+        im4 = ax4.pcolormesh(self.vel.longitude.values, self.vel.latitude.values, 
+                          self.vel.vel_mean.values, shading='auto',
+                          cmap=cmocean.cm.speed, transform=projection)
+        ax4.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
+        ax4.coastlines(zorder=101)
+        cbar4 = plt.colorbar(im4, ax=ax4, fraction=0.025, pad=0.04)
+        cbar4.set_label('Velocity (m/s)', fontsize=20)
+        cbar4.ax.tick_params(labelsize=20)
+        ax4.set_xlabel('Longitude', fontsize=20)
+        ax4.set_ylabel('Latitude', fontsize=20)
+        ax4.tick_params(axis='both', labelsize=20)
+        cs4 = ax4.contour(self.bath.lon, self.bath.lat, 
+                       masked_bathymetry, levels=contour_levels,
+                       colors='grey', alpha=0.3, transform=projection)
+        self.logger.info("Completed velocity subplot (4/6)")
+
+        # Plot 5: CHL
+        ax5 = plt.subplot(gs[2, 0], projection=projection)
+        im5 = ax5.pcolormesh(self.chl.longitude.values, self.chl.latitude.values, 
+                          self.chl.chl_mean.values, shading='auto',
+                          cmap=cmocean.cm.algae, transform=projection, zorder=1)
+        im5.set_clim(0, 2)  # Set max to 2 for CHL
+        ax5.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
+        ax5.coastlines(zorder=101)
+        cbar5 = plt.colorbar(im5, ax=ax5, fraction=0.025, pad=0.04)
+        cbar5.set_label('Chlorophyll (mg/m$^3$)', fontsize=20)
+        cbar5.ax.tick_params(labelsize=20)
+        ax5.set_xlabel('Longitude', fontsize=20)
+        ax5.set_ylabel('Latitude', fontsize=20)
+        ax5.tick_params(axis='both', labelsize=20)
+        cs5 = ax5.contour(self.bath.lon, self.bath.lat, 
+                       masked_bathymetry, levels=contour_levels,
+                       colors='grey', alpha=0.3, transform=projection)
+        self.logger.info("Completed chlorophyll subplot (5/6)")
+
+        # Plot 6: Iron
+        ax6 = plt.subplot(gs[2, 1], projection=projection)
+        im6 = ax6.pcolormesh(self.iron.longitude.values, self.iron.latitude.values, 
+                          self.iron.iron_mean.values, shading='auto',
+                          cmap=cmocean.cm.matter, transform=projection, zorder=1)
+        im6.set_clim(0, 0.001)  # Set color limits on the plot object
+        ax6.add_feature(cfeature.LAND, facecolor='lightgrey', zorder=100)
+        ax6.coastlines(zorder=101)
+        cbar6 = plt.colorbar(im6, ax=ax6, fraction=0.025, pad=0.04)
+        cbar6.set_label('Iron (mmol/m$^3$)', fontsize=20)
+        cbar6.ax.tick_params(labelsize=20)
+        ax6.set_xlabel('Longitude', fontsize=20)
+        ax6.set_ylabel('Latitude', fontsize=20)
+        ax6.tick_params(axis='both', labelsize=20)
+        cs6 = ax6.contour(self.bath.lon, self.bath.lat, 
+                       masked_bathymetry, levels=contour_levels,
+                       colors='grey', alpha=0.3, transform=projection)
+        self.logger.info("Completed iron subplot (6/6)")
+
+        # Set common gridlines for all subplots
+        for ax in [ax1, ax2, ax3, ax4, ax5, ax6]:
+            gl = ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False)
+            gl.top_labels = False
+            gl.right_labels = False
+            gl.xlabel_style = {'size': 20}
+            gl.ylabel_style = {'size': 20}
+        
+        plotName = self.env2Plot
+        plt.savefig(plotName, dpi=300, bbox_inches='tight')
+        plt.close()
+        self.logger.info(f"Saved environmental data plot to: {plotName}")
+        return
+
