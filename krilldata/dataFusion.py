@@ -9,6 +9,7 @@ import copernicusmarine as cop
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import time
+from scipy.interpolate import RegularGridInterpolator
 
 class DataFusion:
     # logger
@@ -57,6 +58,75 @@ class DataFusion:
         else:
             self.fuseDynamic()
         self.loadEnvFeatures()
+        self.fuseNewData()
+        self.fuseSave()
+        breakpoint()
+        return
+
+    def fuseNewData(self):
+        # fuse new data
+        lon = self.krillData.LONGITUDE
+        lat = self.krillData.LATITUDE
+        krill = self.krillData.STANDARDISED_KRILL_UNDER_1M2
+
+        bath_interp = RegularGridInterpolator((self.bath.lat.values, self.bath.lon.values), self.bath.elevation.values, method='linear', bounds_error=False, fill_value=np.nan)
+        bath = np.abs(bath_interp((lat, lon)))
+        self.krillData['DEPTH'] = bath
+
+        chl_mean_interp = RegularGridInterpolator((self.chl.latitude.values, self.chl.longitude.values), self.chl.chl_mean.values, method='linear', bounds_error=False, fill_value=np.nan)
+        chl_min_interp = RegularGridInterpolator((self.chl.latitude.values, self.chl.longitude.values), self.chl.chl_10th_percentile.values, method='linear', bounds_error=False, fill_value=np.nan)
+        chl_max_interp = RegularGridInterpolator((self.chl.latitude.values, self.chl.longitude.values), self.chl.chl_90th_percentile.values, method='linear', bounds_error=False, fill_value=np.nan)
+        chl_mean = chl_mean_interp((lat, lon))
+        chl_min = chl_min_interp((lat, lon))
+        chl_max = chl_max_interp((lat, lon))
+        self.krillData['CHL_MEAN'] = chl_mean
+        self.krillData['CHL_MIN'] = chl_min
+        self.krillData['CHL_MAX'] = chl_max
+        self.logger.info(f"CHL fused")
+
+        iron_mean_interp = RegularGridInterpolator((self.iron.latitude.values, self.iron.longitude.values), self.iron.iron_mean.values, method='linear', bounds_error=False, fill_value=np.nan)
+        iron_min_interp = RegularGridInterpolator((self.iron.latitude.values, self.iron.longitude.values), self.iron.iron_10th_percentile.values, method='linear', bounds_error=False, fill_value=np.nan)
+        iron_max_interp = RegularGridInterpolator((self.iron.latitude.values, self.iron.longitude.values), self.iron.iron_90th_percentile.values, method='linear', bounds_error=False, fill_value=np.nan)
+        iron_mean = iron_mean_interp((lat, lon))
+        iron_min = iron_min_interp((lat, lon))
+        iron_max = iron_max_interp((lat, lon))
+        self.krillData['IRON_MEAN'] = iron_mean
+        self.krillData['IRON_MIN'] = iron_min
+        self.krillData['IRON_MAX'] = iron_max
+        self.logger.info(f"IRON fused")
+
+        ssh_mean_interp = RegularGridInterpolator((self.ssh.latitude.values, self.ssh.longitude.values), self.ssh.ssh_mean.values, method='linear', bounds_error=False, fill_value=np.nan)
+        ssh_min_interp = RegularGridInterpolator((self.ssh.latitude.values, self.ssh.longitude.values), self.ssh.ssh_10th_percentile.values, method='linear', bounds_error=False, fill_value=np.nan)
+        ssh_max_interp = RegularGridInterpolator((self.ssh.latitude.values, self.ssh.longitude.values), self.ssh.ssh_90th_percentile.values, method='linear', bounds_error=False, fill_value=np.nan)
+        ssh_mean = ssh_mean_interp((lat, lon))
+        ssh_min = ssh_min_interp((lat, lon))
+        ssh_max = ssh_max_interp((lat, lon))
+        self.krillData['SSH_MEAN'] = ssh_mean
+        self.krillData['SSH_MIN'] = ssh_min
+        self.krillData['SSH_MAX'] = ssh_max
+        self.logger.info(f"SSH fused")
+
+        vel_mean_interp = RegularGridInterpolator((self.vel.latitude.values, self.vel.longitude.values), self.vel.vel_mean.values, method='linear', bounds_error=False, fill_value=np.nan)
+        vel_min_interp = RegularGridInterpolator((self.vel.latitude.values, self.vel.longitude.values), self.vel.vel_10th_percentile.values, method='linear', bounds_error=False, fill_value=np.nan)
+        vel_max_interp = RegularGridInterpolator((self.vel.latitude.values, self.vel.longitude.values), self.vel.vel_90th_percentile.values, method='linear', bounds_error=False, fill_value=np.nan)
+        vel_mean = vel_mean_interp((lat, lon))
+        vel_min = vel_min_interp((lat, lon))
+        vel_max = vel_max_interp((lat, lon))
+        self.krillData['VEL_MEAN'] = vel_mean
+        self.krillData['VEL_MIN'] = vel_min
+        self.krillData['VEL_MAX'] = vel_max
+        self.logger.info(f"VEL fused")
+
+        sst_mean_interp = RegularGridInterpolator((self.sst.latitude.values, self.sst.longitude.values), self.sst.sst_mean.values, method='linear', bounds_error=False, fill_value=np.nan)
+        sst_min_interp = RegularGridInterpolator((self.sst.latitude.values, self.sst.longitude.values), self.sst.sst_10th_percentile.values, method='linear', bounds_error=False, fill_value=np.nan)
+        sst_max_interp = RegularGridInterpolator((self.sst.latitude.values, self.sst.longitude.values), self.sst.sst_90th_percentile.values, method='linear', bounds_error=False, fill_value=np.nan)
+        sst_mean = sst_mean_interp((lat, lon))
+        sst_min = sst_min_interp((lat, lon))
+        sst_max = sst_max_interp((lat, lon))
+        self.krillData['SST_MEAN'] = sst_mean
+        self.krillData['SST_MIN'] = sst_min
+        self.krillData['SST_MAX'] = sst_max
+        self.logger.info(f"SST fused")
         return
 
     def loadEnvFeatures(self):
@@ -70,7 +140,6 @@ class DataFusion:
             self.logger.info(f"File already exists: {self.env2Plot}")
         else:
             self.plotEnvData2()
-        breakpoint()
         return
 
     def initLogger(self):
