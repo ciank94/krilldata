@@ -25,12 +25,13 @@ class KrillPredict:
 
     # filenames:
     bathymetryFilename = "bathymetry.nc"
-    sstFilename = "sst.nc"
-    sshFilename = "ssh.nc"
-    chlFilename = "chl.nc"
-    ironFilename = "iron.nc"
+    sstFilename = "newSst.nc"
+    sshFilename = "newSsh.nc"
+    chlFilename = "newChl.nc"
+    ironFilename = "newIron.nc"
     fusedFilename = "krillFusedData.csv"
-    featureColumns = ["BATHYMETRY", "SST", "FE","SSH", "NET_VEL", "CHL", "YEAR", "LONGITUDE", "LATITUDE"]
+    featureColumns = ["LONGITUDE","LATITUDE","DEPTH","CHL_MEAN","CHL_MIN","CHL_MAX","IRON_MEAN","IRON_MIN","IRON_MAX","SSH_MEAN",
+    "SSH_MIN","SSH_MAX","VEL_MEAN","VEL_MIN","VEL_MAX","SST_MEAN","SST_MIN","SST_MAX"]
     targetColumn = "STANDARDISED_KRILL_UNDER_1M2"
 
     def __init__(self, inputPath, outputPath, modelType, scenario='southGeorgia'):
@@ -323,7 +324,9 @@ class MapKrillDensity:
         self.chlds = xr.open_dataset(f"{inputPath}/chl.nc")
         self.ironds = xr.open_dataset(f"{inputPath}/iron.nc")
         self.fusedFilename = "krillFusedData.csv"
-        self.featureColumns = ["BATHYMETRY", "SST", "FE","SSH", "NET_VEL", "CHL", "YEAR", "LONGITUDE", "LATITUDE"]
+        self.featureColumns = ["LONGITUDE","LATITUDE","DEPTH","CHL_MEAN","CHL_MIN","CHL_MAX",
+        "IRON_MEAN","IRON_MIN","IRON_MAX","SSH_MEAN","SSH_MIN","SSH_MAX","VEL_MEAN","VEL_MIN",
+        "VEL_MAX","SST_MEAN","SST_MIN","SST_MAX"]
         self.targetColumn = "STANDARDISED_KRILL_UNDER_1M2"
         self.inputPath = inputPath
         self.outputPath = outputPath
@@ -331,7 +334,7 @@ class MapKrillDensity:
         self.model = load(f"{inputPath}/{self.modelType}Model.joblib")
         with open("config/map_params.json", "r") as f:
             self.mapParams = json.load(f)
-
+            
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.info(f"================={self.__class__.__name__}=====================")
         self.logger.info(f"Opening datasets: for {self.featureColumns} and {self.targetColumn}")
@@ -362,6 +365,7 @@ class MapKrillDensity:
         self.y_v = y
         self.mapArea()     
         return
+
 
     def spatialExtent(self):
         self.lonSGmin, self.lonSGmax = self.mapParams['southGeorgia']['lon_min'], self.mapParams['southGeorgia']['lon_max']
@@ -403,6 +407,7 @@ class MapKrillDensity:
         self.lonSo_grid, self.latSo_grid = np.meshgrid(self.lonSo, self.latSo)
         return
 
+
     def loadEnvFeatures(self, year, region):
         # Load the fused data and remove any rows with NaN values
         self.region = region
@@ -432,7 +437,15 @@ class MapKrillDensity:
         self.sshdsMean = self.sshdsSub.mean(dim='time', skipna=True).compute()
         self.chldsMean = self.chldsSub.mean(dim='time', skipna=True).compute()
         self.irondsMean = self.irondsSub.mean(dim='time', skipna=True).compute()
-        
+
+        self.sstdsQuantiles = self.sstdsSub.quantile([0.1, 0.9], dim='time', skipna=True).compute()
+        self.sstdsMin, self.sstdsMax = self.sstdsQuantiles.sel(quantile=0.1), self.sstdsQuantiles.sel(quantile=0.9)
+        self.sshdsQuantiles = self.sshdsSub.quantile([0.1, 0.9], dim='time', skipna=True).compute()
+        self.sshdsMin, self.sshdsMax = self.sshdsQuantiles.sel(quantile=0.1), self.sshdsQuantiles.sel(quantile=0.9)
+        self.chldsQuantiles = self.chldsSub.quantile([0.1, 0.9], dim='time', skipna=True).compute()
+        self.chldsMin, self.chldsMax = self.chldsQuantiles.sel(quantile=0.1), self.chldsQuantiles.sel(quantile=0.9)
+        self.irondsQuantiles = self.irondsSub.quantile([0.1, 0.9], dim='time', skipna=True).compute()
+        self.irondsMin, self.irondsMax = self.irondsQuantiles.sel(quantile=0.1), self.irondsQuantiles.sel(quantile=0.9)
         return
 
     def reindexInterpolate(self):
@@ -457,15 +470,38 @@ class MapKrillDensity:
 
         interp_fe = RegularGridInterpolator((self.irondsMean["latitude"].values, self.irondsMean["longitude"].values), self.irondsMean["fe"].values, method='linear', bounds_error=False, fill_value=np.nan)
         irondsMean = interp_fe((self.lat, self.lon))
+        interp_feMin = RegularGridInterpolator((self.irondsMin["latitude"].values, self.irondsMin["longitude"].values), self.irondsMin["fe"].values, method='linear', bounds_error=False, fill_value=np.nan)
+        interp_feMax = RegularGridInterpolator((self.irondsMax["latitude"].values, self.irondsMax["longitude"].values), self.irondsMax["fe"].values, method='linear', bounds_error=False, fill_value=np.nan)
+        irondsMin = interp_feMin((self.lat, self.lon))
+        irondsMax = interp_feMax((self.lat, self.lon))
         interp_t = RegularGridInterpolator((self.sstdsMean["latitude"].values, self.sstdsMean["longitude"].values), self.sstdsMean["analysed_sst"].values, method='linear', bounds_error=False, fill_value=np.nan)
         sstdsMean = interp_t((self.lat, self.lon))
+        interp_tMin = RegularGridInterpolator((self.sstdsMin["latitude"].values, self.sstdsMin["longitude"].values), self.sstdsMin["analysed_sst"].values, method='linear', bounds_error=False, fill_value=np.nan)
+        interp_tMax = RegularGridInterpolator((self.sstdsMax["latitude"].values, self.sstdsMax["longitude"].values), self.sstdsMax["analysed_sst"].values, method='linear', bounds_error=False, fill_value=np.nan)
+        sstdsMin = interp_tMin((self.lat, self.lon))
+        sstdsMax = interp_tMax((self.lat, self.lon))
         interp_chl = RegularGridInterpolator((self.chldsMean["latitude"].values, self.chldsMean["longitude"].values), self.chldsMean["CHL"].values, method='linear', bounds_error=False, fill_value=np.nan)
         chldsMean = interp_chl((self.lat, self.lon))
+        interp_chlMin = RegularGridInterpolator((self.chldsMin["latitude"].values, self.chldsMin["longitude"].values), self.chldsMin["CHL"].values, method='linear', bounds_error=False, fill_value=np.nan)
+        interp_chlMax = RegularGridInterpolator((self.chldsMax["latitude"].values, self.chldsMax["longitude"].values), self.chldsMax["CHL"].values, method='linear', bounds_error=False, fill_value=np.nan)
+        chldsMin = interp_chlMin((self.lat, self.lon))
+        chldsMax = interp_chlMax((self.lat, self.lon))
         interp_ssh = RegularGridInterpolator((self.sshdsMean["latitude"].values, self.sshdsMean["longitude"].values), self.sshdsMean["adt"].values, method='linear', bounds_error=False, fill_value=np.nan)
         sshdsMean = interp_ssh((self.lat, self.lon))
+        interp_sshMin = RegularGridInterpolator((self.sshdsMin["latitude"].values, self.sshdsMin["longitude"].values), self.sshdsMin["adt"].values, method='linear', bounds_error=False, fill_value=np.nan)
+        interp_sshMax = RegularGridInterpolator((self.sshdsMax["latitude"].values, self.sshdsMax["longitude"].values), self.sshdsMax["adt"].values, method='linear', bounds_error=False, fill_value=np.nan)
+        sshdsMin = interp_sshMin((self.lat, self.lon))
+        sshdsMax = interp_sshMax((self.lat, self.lon))
         # todo: interpolate net_vel after finding values
         interp_net = RegularGridInterpolator((self.sshdsMean["latitude"].values, self.sshdsMean["longitude"].values), np.sqrt(self.sshdsMean["ugos"].values**2 + self.sshdsMean["vgos"].values**2), method='linear', bounds_error=False, fill_value=np.nan)
         net_vel = interp_net((self.lat, self.lon))
+        # todo: interpolate net_vel after finding values
+        interp_net = RegularGridInterpolator((self.sshdsMean["latitude"].values, self.sshdsMean["longitude"].values), np.sqrt(self.sshdsMean["ugos"].values**2 + self.sshdsMean["vgos"].values**2), method='linear', bounds_error=False, fill_value=np.nan)
+        net_vel = interp_net((self.lat, self.lon))
+        interp_netMin = RegularGridInterpolator((self.sshdsMin["latitude"].values, self.sshdsMin["longitude"].values), np.sqrt(self.sshdsMin["ugos"].values**2 + self.sshdsMin["vgos"].values**2), method='linear', bounds_error=False, fill_value=np.nan)
+        net_velMin = interp_netMin((self.lat, self.lon))
+        interp_netMax = RegularGridInterpolator((self.sshdsMax["latitude"].values, self.sshdsMax["longitude"].values), np.sqrt(self.sshdsMax["ugos"].values**2 + self.sshdsMax["vgos"].values**2), method='linear', bounds_error=False, fill_value=np.nan)
+        net_velMax = interp_netMax((self.lat, self.lon))
         interp_bath = RegularGridInterpolator((self.bathymetryds["lat"].values, self.bathymetryds["lon"].values), self.bathymetryds["elevation"].values, method='linear', bounds_error=False, fill_value=np.nan)
         bathymetryds = interp_bath((self.lat, self.lon))
         #bathymetryds = self.bathymetryds.sel(lat=lat, lon=lon, method='nearest')
@@ -481,16 +517,31 @@ class MapKrillDensity:
         # self.net_vel = np.sqrt(np.power(sshdsMean["ugos"].values,2) + np.power(sshdsMean["vgos"].values,2))
         # self.chl = chldsMean["CHL"].values
         self.fe = irondsMean
+        self.feMin = irondsMin
+        self.feMax = irondsMax
         self.sst = sstdsMean - 273.15
+        self.sstMin = sstdsMin - 273.15
+        self.sstMax = sstdsMax - 273.15
         self.ssh = sshdsMean
+        self.sshMin = sshdsMin
+        self.sshMax = sshdsMax
         self.net_vel = net_vel
+        self.net_velMin = net_velMin
+        self.net_velMax = net_velMax
         self.chl = chldsMean
+        self.chlMin = chldsMin
+        self.chlMax = chldsMax
         self.year = self.yearP*np.ones(self.bathymetry.shape)
         return
 
 
     def getFeatures(self):
-        X = self.bathymetry.flatten(), self.fe.flatten(), self.sst.flatten(), self.ssh.flatten(), self.net_vel.flatten(), self.chl.flatten(), self.year.flatten(), self.lon.flatten(), self.lat.flatten()
+        #self.featureColumns = ["LONGITUDE","LATITUDE","DEPTH","CHL_MEAN","CHL_MIN","CHL_MAX",
+        #"IRON_MEAN","IRON_MIN","IRON_MAX","SSH_MEAN","SSH_MIN","SSH_MAX","VEL_MEAN","VEL_MIN",
+        #"VEL_MAX","SST_MEAN","SST_MIN","SST_MAX"]
+        X = self.lon.flatten(), self.lat.flatten(), self.bathymetry.flatten(), self.chl.flatten(), self.chlMin.flatten(), self.chlMax.flatten(), \
+        self.fe.flatten(), self.feMin.flatten(), self.feMax.flatten(), self.ssh.flatten(), self.sshMin.flatten(), self.sshMax.flatten(), \
+        self.net_vel.flatten(), self.net_velMin.flatten(), self.net_velMax.flatten(), self.sst.flatten(), self.sstMin.flatten(), self.sstMax.flatten()
         self.X = np.column_stack(X)
         self.X_df = pd.DataFrame(self.X, columns=self.featureColumns)
         for col in self.X_df.columns:
@@ -505,7 +556,7 @@ class MapKrillDensity:
     def mapArea(self, save_path = "output/"):
         # Create levels for contour plot
         #levels = np.linspace(0,np.nanmean(y_time)*1.5, 40)
-        levels = np.linspace(0, 1.5, 30)
+        levels = np.linspace(0, 20, 30)
         
         # Plot bathymetry first
         bath_data = self.bathymetry
@@ -529,7 +580,8 @@ class MapKrillDensity:
             ax.coastlines()
             self.plot_bathymetry(ax, lon_bath, lat_bath, bath_data)
             # Plot predictions with pcolormesh
-            y_v = np.power(10, self.y_v[counter])
+            #y_v = np.power(10, self.y_v[counter])
+            y_v = np.expm1(self.y_v[counter])
             mesh = ax.pcolormesh(self.lon, self.lat, y_v,
                            transform=ccrs.PlateCarree(),
                            cmap='Reds', vmin=min(levels), vmax=max(levels))

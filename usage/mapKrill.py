@@ -26,7 +26,7 @@ mp = MapKrillDensity(inputPath, outputPath, modelType='rfr')
 # mp.plotRegion(region='AP')
 
 # plot SG
-#mp.plotRegion(region='SG')
+mp.plotRegion(region='SG')
 
 # plot SO
-mp.plotRegion(region='SO')
+#mp.plotRegion(region='SO')
