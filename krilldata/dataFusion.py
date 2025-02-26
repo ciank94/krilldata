@@ -60,7 +60,6 @@ class DataFusion:
         self.loadEnvFeatures()
         self.fuseNewData()
         self.fuseSave()
-        breakpoint()
         return
 
     def fuseNewData(self):
