@@ -207,6 +207,13 @@ class KrillTrain:
         # Optional: Cross-validation on the entire dataset with the best parameters
         cv_scores = cross_val_score(self.model.best_estimator_, self.X, self.y, cv=5)
         self.logger.info(f"Cross-validation scores on full dataset: {cv_scores}")
+        # "rfr": {
+        # "n_estimators": 200,
+        # "max_depth": 50,
+        # "min_samples_split": 2,
+        # "min_samples_leaf": 1,
+        # "max_features": "log2"
+        #     }
         breakpoint()
         return
     

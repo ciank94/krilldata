@@ -261,7 +261,7 @@ class KrillPredict:
         
         # Create levels for contour plot
         #levels = np.linspace(0,np.nanmean(y_time)*1.5, 40)
-        levels = np.linspace(0, 2.5, 40)
+        levels = np.linspace(0, 2, 40)
         
         # Plot bathymetry first
         bathymetry_ds = xr.open_dataset(f"{self.inputPath}/{KrillPredict.bathymetryFilename}")
@@ -556,7 +556,7 @@ class MapKrillDensity:
     def mapArea(self, save_path = "output/"):
         # Create levels for contour plot
         #levels = np.linspace(0,np.nanmean(y_time)*1.5, 40)
-        levels = np.linspace(0, 20, 30)
+        levels = np.linspace(0, 2, 30)
         
         # Plot bathymetry first
         bath_data = self.bathymetry
@@ -580,8 +580,8 @@ class MapKrillDensity:
             ax.coastlines()
             self.plot_bathymetry(ax, lon_bath, lat_bath, bath_data)
             # Plot predictions with pcolormesh
-            #y_v = np.power(10, self.y_v[counter])
-            y_v = np.expm1(self.y_v[counter])
+            y_v = np.power(10, self.y_v[counter])
+            #y_v = np.expm1(self.y_v[counter])
             mesh = ax.pcolormesh(self.lon, self.lat, y_v,
                            transform=ccrs.PlateCarree(),
                            cmap='Reds', vmin=min(levels), vmax=max(levels))

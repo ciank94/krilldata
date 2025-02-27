@@ -89,11 +89,9 @@ class ReadKrillBase:
         return
 
     def transformDensities(self):
-        #self.fileDataSubset.loc[validData, "STANDARDISED_KRILL_UNDER_1M2"] = \
-        #   np.log10(self.fileDataSubset.loc[validData, "STANDARDISED_KRILL_UNDER_1M2"] + 0.01)
         validData = self.fileDataSubset.STANDARDISED_KRILL_UNDER_1M2 >= 0
-        self.fileDataSubset.loc[validData, "STANDARDISED_KRILL_UNDER_1M2"] = \
-           np.log1p(self.fileDataSubset.loc[validData, "STANDARDISED_KRILL_UNDER_1M2"]) # exp(x) - 1 is the inverse
+        self.fileDataSubset.loc[validData, "STANDARDISED_KRILL_UNDER_1M2"] = np.log10(self.fileDataSubset.loc[validData, "STANDARDISED_KRILL_UNDER_1M2"] + 0.01)
+        #self.fileDataSubset.loc[validData, "STANDARDISED_KRILL_UNDER_1M2"] = np.log1p(self.fileDataSubset.loc[validData, "STANDARDISED_KRILL_UNDER_1M2"]) # exp(x) - 1 is the inverse
         return
 
     def printDataHead(self):
