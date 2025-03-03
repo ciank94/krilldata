@@ -1,0 +1,59 @@
+{
+    "rfc": {
+        "n_estimators": 100,
+        "max_depth": 10,
+        "min_samples_split": 2,
+        "min_samples_leaf": 1,
+        "random_state": 42,
+        "class_weight": "balanced"
+    },
+    "dtc": {
+        "max_depth": 10,
+        "min_samples_split": 2,
+        "min_samples_leaf": 1,
+        "random_state": 42,
+        "class_weight": "balanced"
+    },
+    "svc": {
+        "kernel": "rbf", 
+        "C": 1.0,
+        "gamma": "scale",
+        "probability": true,
+        "random_state": 42,
+        "class_weight": "balanced"
+    },
+    "lr": {
+        "C": 1.0,
+        "solver": "liblinear",
+        "max_iter": 1000,
+        "random_state": 42,
+        "class_weight": "balanced"
+    },
+    "Search": {
+        "rfc": {
+            "n_estimators": [50, 100, 200, 300],
+            "max_depth": [5, 10, 15, 20, null],
+            "min_samples_split": [2, 5, 10],
+            "min_samples_leaf": [1, 2, 4],
+            "class_weight": ["balanced", "balanced_subsample", null]
+        },
+        "dtc": {
+            "max_depth": [5, 10, 15, 20, null],
+            "min_samples_split": [2, 5, 10],
+            "min_samples_leaf": [1, 2, 4],
+            "class_weight": ["balanced", null]
+        },
+        "svc": {
+            "C": [0.1, 1, 10, 100],
+            "gamma": ["scale", "auto", 0.01, 0.1, 1],
+            "kernel": ["rbf", "linear", "poly", "sigmoid"],
+            "class_weight": ["balanced", null]
+        },
+        "lr": {
+            "C": [0.01, 0.1, 1, 10, 100],
+            "solver": ["liblinear", "lbfgs", "newton-cg"],
+            "penalty": ["l1", "l2"],
+            "class_weight": ["balanced", null]
+        }
+    }
+}
