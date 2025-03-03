@@ -93,6 +93,15 @@ class KrillClassify:
         self.loadXy()
         return
 
+    def handleNan(self):
+        """Handle missing values in the dataset using median imputation."""
+        self.logger.info(f"Handling NaN values...")
+        self.logger.info(f"Before: {self.df.isna().sum()}")
+        self.df[KrillClassify.featureColumns] = self.df[KrillClassify.featureColumns].fillna(self.df[KrillClassify.featureColumns].median())
+        self.logger.info(f"After: {self.df.isna().sum()}")
+        self.logger.info(f"Finished handling NaN with median imputation")
+        return
+
     def training(self):
         """Execute the training pipeline for the classifier in the correct sequence."""
         self.trainTestSplit()
@@ -129,8 +138,8 @@ class KrillClassify:
         self.logger.info(f"Dataset:\n {self.df.describe()}")
         
         # Count zeros vs non-zeros
-        zero_count = (self.df[KrillClassify.targetColumn] == 0).sum()
-        nonzero_count = (self.df[KrillClassify.targetColumn] > 0).sum()
+        zero_count = (self.df[KrillClassify.targetColumn] == -2.0).sum()
+        nonzero_count = (self.df[KrillClassify.targetColumn] > -2.0).sum()
         
         self.logger.info(f"Class distribution:")
         self.logger.info(f"  Zero values (absence): {zero_count}")
@@ -140,10 +149,12 @@ class KrillClassify:
         return
 
     def createBinaryTarget(self):
-        """Create binary target for classification (0 = absence, 1 = presence)"""
+        """Create binary target for classification (0 = absence, 1 = presence)
+        In this dataset, -2.0 values represent absence of krill (zeros)
+        and all other values represent presence."""
         self.logger.info(f"Creating binary target for classification...")
-        self.df['TARGET_CLASS'] = (self.df[KrillClassify.targetColumn] > self.threshold).astype(int)
-        self.logger.info(f"Binary target created with threshold {self.threshold}")
+        self.df['TARGET_CLASS'] = (self.df[KrillClassify.targetColumn] != -2.0).astype(int)
+        self.logger.info(f"Binary target created: 0 = absence (-2.0 values), 1 = presence (all other values)")
         self.logger.info(f"Class counts: {self.df['TARGET_CLASS'].value_counts()}")
         return
         
@@ -154,15 +165,6 @@ class KrillClassify:
             self.df[col] = (self.df[col] - self.df[col].mean()) / (self.df[col].std() + 0.00001)
             self.logger.info(f"Feature {col} scaled, with mean {self.df[col].mean():.6f} and std {self.df[col].std():.6f}")
         self.logger.info(f"Finished scaling features")
-        return
-
-    def handleNan(self):
-        """Handle missing values in the dataset."""
-        self.logger.info(f"Handling NaN values...")
-        self.logger.info(f"Before: {self.df.isna().sum()}")
-        self.df = self.df.dropna()
-        self.logger.info(f"After: {self.df.isna().sum()}")
-        self.logger.info(f"Finished handling NaN, {len(self.df)} rows remaining")
         return
 
     def loadXy(self):
@@ -208,7 +210,7 @@ class KrillClassify:
         kwargs = self.modelParams["Search"][self.modelType]
         model_class = KrillClassify.models[self.modelType]
         self.logger.info(f"Running random search for {self.modelType} model...")
-        self.model = RandomizedSearchCV(model_class(), kwargs, n_iter=10, cv=5, random_state=42)
+        self.model = RandomizedSearchCV(model_class(), kwargs, n_iter=10, cv=5, random_state=42, verbose=2)
         self.model.fit(self.X_train, self.y_train)
         self.logger.info(f"Best parameters: {self.model.best_params_}")
         return
@@ -234,7 +236,7 @@ class KrillClassify:
         
         # Create and save confusion matrix
         cm = confusion_matrix(self.y_test, y_pred)
-        self.plotConfusionMatrix(cm)
+        self.plot_confusion_matrix()
         
         # Cross-validation
         cv_scores = cross_val_score(self.model, self.X, self.y, cv=5)
@@ -251,20 +253,6 @@ class KrillClassify:
         }
         return
     
-    def plotConfusionMatrix(self, cm):
-        """Plot confusion matrix and save to file."""
-        plt.figure(figsize=(8, 6))
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                    xticklabels=['Absence', 'Presence'],
-                    yticklabels=['Absence', 'Presence'])
-        plt.xlabel('Predicted')
-        plt.ylabel('True')
-        plt.title('Confusion Matrix')
-        plt.tight_layout()
-        plt.savefig(f"{self.outputPath}/{KrillClassify.confusionMatrixSaveFig}")
-        plt.close()
-        self.logger.info(f"Confusion matrix saved to {self.outputPath}/{KrillClassify.confusionMatrixSaveFig}")
-        return
 
     def saveMetrics(self):
         """Save metrics to JSON file."""
@@ -330,6 +318,106 @@ class KrillClassify:
             self.logger.info(f"  {row['Feature']}: {row['Importance']:.4f}")
             
         return feature_importance
+    
+    def plot_spatial_predictions(self):
+        """Plot spatial distribution of predictions vs actual values."""
+        # Get predictions
+        y_pred = self.model.predict(self.X_test)
+        
+        # Get the original coordinates
+        test_df = pd.DataFrame({
+            'LONGITUDE': self.X_test['LONGITUDE'],
+            'LATITUDE': self.X_test['LATITUDE'],
+            'y_true': self.y_test,
+            'y_pred': y_pred
+        })
+        
+        # Categorize predictions
+        test_df['result'] = 'Unknown'
+        test_df.loc[(test_df['y_true'] == 1) & (test_df['y_pred'] == 1), 'result'] = 'True Positive'
+        test_df.loc[(test_df['y_true'] == 0) & (test_df['y_pred'] == 0), 'result'] = 'True Negative'
+        test_df.loc[(test_df['y_true'] == 0) & (test_df['y_pred'] == 1), 'result'] = 'False Positive'
+        test_df.loc[(test_df['y_true'] == 1) & (test_df['y_pred'] == 0), 'result'] = 'False Negative'
+        
+        # Plot
+        plt.figure(figsize=(12, 8))
+        colors = {'True Positive': 'green', 'True Negative': 'blue', 
+                 'False Positive': 'red', 'False Negative': 'orange'}
+        
+        for result, group in test_df.groupby('result'):
+            plt.scatter(group['LONGITUDE'], group['LATITUDE'], c=colors[result], label=result, alpha=0.7)
+        
+        plt.xlabel('Longitude')
+        plt.ylabel('Latitude')
+        plt.title('Spatial Distribution of Classification Results')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.savefig(f"{self.outputPath}/{self.modelType}_spatial_predictions.png")
+        plt.close()
+        
+        self.logger.info(f"Spatial prediction map saved to {self.outputPath}/{self.modelType}_spatial_predictions.png")
+        return
+
+    def plot_confusion_matrix(self):
+        """Plot confusion matrix for model predictions."""
+        if self.model is None:
+            self.logger.error("Model not trained yet!")
+            return
+            
+        self.logger.info("Plotting confusion matrix...")
+        y_pred = self.model.predict(self.X)
+        cm = confusion_matrix(self.y, y_pred)
+        
+        plt.figure(figsize=(10, 8))
+       
+        # Create heatmap with a different colormap and normalization
+        ax = sns.heatmap(cm, annot=True, fmt='d', 
+                    cmap='YlOrRd',  # Yellow-Orange-Red sequential colormap
+                    xticklabels=['Absence', 'Presence'],
+                    yticklabels=['Absence', 'Presence'],
+                    annot_kws={'size': 16},  # Larger numbers
+                    vmin=0,  # Minimum value for colorbar
+                    vmax=np.max(cm),  # Maximum value from confusion matrix
+                    cbar_kws={'label': 'Number of Samples'})
+       
+        # Modify colorbar properties after creation
+        cbar = ax.collections[0].colorbar
+        cbar.ax.set_ylabel('Number of Samples', fontsize=14)
+        cbar.ax.tick_params(labelsize=14)
+       
+        # Customize the plot
+        plt.title('Confusion Matrix', fontsize=16, pad=20)
+        plt.ylabel('True Label', fontsize=14, labelpad=10)
+        plt.xlabel('Predicted Label', fontsize=14, labelpad=10)
+       
+        # Increase tick label size
+        plt.xticks(fontsize=16)
+        plt.yticks(fontsize=16, rotation=0)
+       
+        # Add total samples text with larger font
+        plt.text(0.5, -0.15, f'Total samples: {len(self.y):,}', 
+                ha='center', va='center', transform=plt.gca().transAxes, 
+                fontsize=14)
+       
+        # Adjust layout to prevent label cutoff
+        plt.tight_layout()
+        plt.savefig(f"{self.outputPath}/{self.modelType}_confusion_matrix.png")
+        plt.close()
+        
+        # Calculate and log metrics
+        accuracy = accuracy_score(self.y, y_pred)
+        precision = precision_score(self.y, y_pred)
+        recall = recall_score(self.y, y_pred)
+        f1 = f1_score(self.y, y_pred)
+        
+        self.logger.info("Classification metrics:")
+        self.logger.info(f"  Accuracy: {accuracy:.4f}")
+        self.logger.info(f"  Precision: {precision:.4f}")
+        self.logger.info(f"  Recall: {recall:.4f}")
+        self.logger.info(f"  F1-score: {f1:.4f}")
+        
+        self.logger.info(f"Confusion matrix saved to {self.outputPath}/{self.modelType}_confusion_matrix.png")
+        return
 
 
 # Example usage
