@@ -377,7 +377,7 @@ class KrillClassify:
                     yticklabels=['Absence', 'Presence'],
                     annot_kws={'size': 16},  # Larger numbers
                     vmin=0,  # Minimum value for colorbar
-                    vmax=np.max(cm),  # Maximum value from confusion matrix
+                    vmax=np.max(cm)*0.75,  # Maximum value from confusion matrix
                     cbar_kws={'label': 'Number of Samples'})
        
         # Modify colorbar properties after creation

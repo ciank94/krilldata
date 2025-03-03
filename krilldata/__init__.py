@@ -4,3 +4,4 @@ from .krillTrain import KrillTrain
 from .krillPredict import KrillPredict, ResponseCurves, PerformancePlot, MapKrillDensity
 from .downloadCop import DownloadCop
 from .krillClassify import KrillClassify
+from .krillHurdle import KrillHurdle
