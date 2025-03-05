@@ -1,10 +1,10 @@
 {
     "rfr": {
-        "n_estimators": 500,
-        "max_depth": 30,
+        "n_estimators": 200,
+        "max_depth": 20,
         "min_samples_split": 10,
-        "min_samples_leaf": 2,
-        "max_features": "log2"
+        "min_samples_leaf": 1,
+        "max_features": null
     },
     "gbr": {
         "n_estimators": 100,

@@ -123,6 +123,13 @@ class KrillTrain:
         self.df = pd.read_csv(self.fusedDataPath)
         self.df = self.df[KrillTrain.featureColumns + [KrillTrain.targetColumn]]
         self.logger.info(f"Read features from {self.fusedDataPath}")
+        
+        # Filter out zero values (where target == -2.0)
+        zero_count = (self.df[KrillTrain.targetColumn] == -2.0).sum()
+        self.logger.info(f"Filtering out {zero_count} zero values (where {KrillTrain.targetColumn} == -2.0)")
+        self.df = self.df[self.df[KrillTrain.targetColumn] > -2.0]
+        self.logger.info(f"Remaining non-zero values: {len(self.df)}")
+        
         self.logger.info(f"\n{self.df}")
         return
 
@@ -212,6 +219,13 @@ class KrillTrain:
         # "max_depth": 50,
         # "min_samples_split": 2,
         # "min_samples_leaf": 1,
+        # "max_features": "log2"
+        #     }
+        # "rfr": {
+        # "n_estimators": 500,
+        # "max_depth": 30,
+        # "min_samples_split": 10,
+        # "min_samples_leaf": 2,
         # "max_features": "log2"
         #     }
         breakpoint()
